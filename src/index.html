@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>材料出し（zumen-pickup）</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <button id="btn-open" title="DXFファイルを開く (Ctrl+O)">
+      <span class="icon">📂</span> DXFを開く
+    </button>
+    <div class="separator"></div>
+    <button id="btn-fit" title="全体表示 (Ctrl+0)">
+      <span class="icon">⊞</span> 全体
+    </button>
+    <button id="btn-zoom-in" title="ズームイン">
+      <span class="icon">+</span>
+    </button>
+    <button id="btn-zoom-out" title="ズームアウト">
+      <span class="icon">−</span>
+    </button>
+    <div class="separator"></div>
+    <label class="tool-label">
+      <input type="checkbox" id="chk-select-mode" checked>
+      クリック拾い
+    </label>
+    <div class="separator"></div>
+    <button id="btn-clear-parts" class="btn-danger" title="リストをクリア">
+      <span class="icon">🗑</span> リストクリア
+    </button>
+    <div class="separator"></div>
+    <button id="btn-print" title="発注書PDFを印刷 (Ctrl+P)">
+      <span class="icon">🖨</span> 発注書を印刷
+    </button>
+    <div class="flex-grow"></div>
+    <span id="status-bar">DXFファイルを開いてください</span>
+  </div>
+
+  <!-- Main layout -->
+  <div id="main-layout">
+    <!-- DXF Canvas -->
+    <div id="canvas-pane">
+      <canvas id="dxf-canvas"></canvas>
+      <div id="canvas-hint">
+        ホイール: ズーム　中ボタンドラッグ: パン<br>
+        左クリック: 部品を拾う　Shift+クリック: 追加選択
+      </div>
+    </div>
+
+    <!-- Resizer -->
+    <div id="resizer"></div>
+
+    <!-- Parts List Pane -->
+    <div id="parts-pane">
+      <div id="parts-header">
+        <h2>拾い出しリスト <span id="parts-count">(0件)</span></h2>
+      </div>
+
+      <div id="parts-table-wrap">
+        <table id="parts-table">
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>図形</th>
+              <th>レイヤ</th>
+              <th>寸法</th>
+              <th>材質</th>
+              <th>板厚</th>
+              <th>個数</th>
+              <th>備考</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="parts-tbody"></tbody>
+        </table>
+        <div id="parts-empty">
+          <p>DXFを開いてエンティティをクリックすると<br>ここにリストアップされます</p>
+        </div>
+      </div>
+
+      <div id="parts-footer">
+        <button id="btn-export-csv">CSVで保存</button>
+        <span id="parts-summary"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Part Edit Dialog -->
+  <div id="dialog-overlay" class="hidden">
+    <div id="dialog-box">
+      <h3>部品情報を入力</h3>
+      <form id="part-form">
+        <div class="form-row">
+          <label>寸法</label>
+          <input type="text" id="f-dims" readonly>
+        </div>
+        <div class="form-row">
+          <label>材質<span class="required">*</span></label>
+          <select id="f-material">
+            <option value="">-- 選択 --</option>
+            <option>SS400</option>
+            <option>SUS304</option>
+            <option>SUS316</option>
+            <option>SUS430</option>
+            <option>アルミ(A1050)</option>
+            <option>アルミ(A5052)</option>
+            <option>銅(C1020)</option>
+            <option>鉄(純鉄)</option>
+            <option>その他</option>
+          </select>
+          <input type="text" id="f-material-custom" placeholder="直接入力">
+        </div>
+        <div class="form-row">
+          <label>板厚<span class="required">*</span></label>
+          <select id="f-thickness">
+            <option value="">-- 選択 --</option>
+            <option>1t</option><option>1.5t</option><option>2t</option>
+            <option>2.3t</option><option>3t</option><option>4t</option>
+            <option>4.5t</option><option>5t</option><option>6t</option>
+            <option>9t</option><option>12t</option><option>16t</option>
+            <option>19t</option><option>22t</option><option>25t</option>
+            <option>32t</option>
+          </select>
+          <input type="text" id="f-thickness-custom" placeholder="例: 6t">
+        </div>
+        <div class="form-row">
+          <label>個数</label>
+          <input type="number" id="f-quantity" value="1" min="1" max="9999">
+        </div>
+        <div class="form-row">
+          <label>備考</label>
+          <input type="text" id="f-note" placeholder="曲げ・穴加工など">
+        </div>
+        <div class="form-actions">
+          <button type="button" id="dialog-cancel">キャンセル</button>
+          <button type="submit" id="dialog-ok">リストに追加</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Print layout (hidden, shown on print) -->
+  <div id="print-area">
+    <div id="print-header">
+      <h1>材料発注リスト</h1>
+      <div id="print-meta"></div>
+    </div>
+    <table id="print-table">
+      <thead>
+        <tr>
+          <th>No.</th>
+          <th>図形種別</th>
+          <th>レイヤ</th>
+          <th>寸法</th>
+          <th>材質</th>
+          <th>板厚</th>
+          <th>個数</th>
+          <th>備考</th>
+        </tr>
+      </thead>
+      <tbody id="print-tbody"></tbody>
+    </table>
+    <div id="print-footer">作成日: <span id="print-date"></span></div>
+  </div>
+
+  <script src="dxf-parser.js"></script>
+  <script src="dxf-renderer.js"></script>
+  <script src="parts-manager.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
