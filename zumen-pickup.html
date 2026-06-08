@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>材料出し（zumen-pickup）</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1a1a2e;--bg2:#16213e;--bg3:#0f3460;--accent:#00FF88;--accent2:#e94560;--text:#e0e0e0;--muted:#888;--border:#2a2a4a}
+html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-serif;font-size:13px;background:var(--bg);color:var(--text)}
+#toolbar{display:flex;align-items:center;gap:6px;height:46px;padding:0 10px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
+#toolbar button{display:flex;align-items:center;gap:4px;padding:5px 12px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:13px}
+#toolbar button:hover{background:#1a4080}
+.sep{width:1px;height:28px;background:var(--border);margin:0 4px}
+.fg{flex:1}
+#status{font-size:12px;color:var(--muted);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#main{display:flex;height:calc(100vh - 46px);overflow:hidden}
+#cpane{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+#dxf-canvas{display:block;cursor:crosshair;position:absolute;top:0;left:0}
+#hint{position:absolute;bottom:10px;left:10px;font-size:11px;color:var(--muted);background:rgba(0,0,0,.5);padding:4px 8px;border-radius:3px;pointer-events:none;line-height:1.6}
+#resizer{width:5px;cursor:col-resize;background:var(--border);flex-shrink:0}
+#resizer:hover{background:var(--accent)}
+#ppane{width:480px;min-width:300px;display:flex;flex-direction:column;background:var(--bg2);border-left:1px solid var(--border);overflow:hidden;flex-shrink:0}
+#phead{padding:10px 14px 8px;border-bottom:1px solid var(--border)}
+#phead h2{font-size:14px}
+#pcnt{color:var(--muted);font-weight:normal;font-size:12px}
+#pwrap{flex:1;overflow:auto;position:relative}
+#pempty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--muted);font-size:12px;line-height:2;pointer-events:none}
+#ptable{width:100%;border-collapse:collapse;font-size:12px}
+#ptable th{position:sticky;top:0;background:var(--bg3);padding:6px 8px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;font-weight:bold}
+#ptable td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+#ptable tr:hover td{background:rgba(255,255,255,.04)}
+#ptable td input[type=text],#ptable td input[type=number]{width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:12px;padding:2px 4px;outline:none}
+#ptable td input:focus{border-bottom-color:var(--accent)}
+#ptable td input[type=number]{width:50px}
+.bdel{background:transparent;border:none;color:var(--accent2);cursor:pointer;font-size:14px;padding:2px 4px;opacity:.6}
+.bdel:hover{opacity:1}
+#pfooter{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--border);flex-shrink:0}
+#pfooter button{padding:5px 14px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px}
+#pfooter button:hover{background:#1a4080}
+#psum{font-size:12px;color:var(--muted)}
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:1000}
+#overlay.hidden{display:none}
+#dbox{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:24px 28px;width:420px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+#dbox h3{font-size:16px;margin-bottom:18px;color:var(--accent)}
+.fr{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.fr label{width:50px;flex-shrink:0;font-size:12px;color:var(--muted)}
+.req{color:var(--accent2);margin-left:2px}
+.fr input,.fr select{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:6px 8px;font-size:13px;outline:none}
+.fr input:focus,.fr select:focus{border-color:var(--accent)}
+.fa{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.fa button{padding:7px 20px;border-radius:4px;border:1px solid var(--border);cursor:pointer;font-size:13px}
+#dcancel{background:var(--bg);color:var(--text)}
+#dok{background:var(--accent);color:#000;border-color:var(--accent);font-weight:bold}
+#parea{display:none}
+@media print{
+  body>*:not(#parea){display:none!important}
+  #parea{display:block;padding:15mm;color:#000;font-family:'Meiryo',sans-serif}
+  #phead2{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;border-bottom:2px solid #000;padding-bottom:6px}
+  #phead2 h1{font-size:20px}
+  #ptable2{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px}
+  #ptable2 th,#ptable2 td{border:1px solid #aaa;padding:5px 8px;text-align:left}
+  #ptable2 th{background:#e8e8e8;font-weight:bold}
+  #ptable2 tr:nth-child(even) td{background:#f8f8f8}
+  #pfoot2{font-size:11px;color:#666;text-align:right}
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button id="bopen">📂 DXFを開く</button>
+  <div class="sep"></div>
+  <button id="bfit">⊞ 全体</button>
+  <button id="bzin">＋</button>
+  <button id="bzout">－</button>
+  <div class="sep"></div>
+  <button id="bclr" style="color:var(--accent2)">🗑 リストクリア</button>
+  <div class="sep"></div>
+  <button id="bprint">🖨 発注書を印刷</button>
+  <button id="bcsv">CSV保存</button>
+  <div class="fg"></div>
+  <span id="status">DXFファイルを開いてください</span>
+</div>
+
+<div id="main">
+  <div id="cpane">
+    <canvas id="dxf-canvas"></canvas>
+    <div id="hint">ホイール:ズーム　中ボタンドラッグ:パン　左クリック:部品を拾う</div>
+  </div>
+  <div id="resizer"></div>
+  <div id="ppane">
+    <div id="phead"><h2>拾い出しリスト <span id="pcnt">(0件)</span></h2></div>
+    <div id="pwrap">
+      <div id="pempty">DXFを開いてエンティティをクリックすると<br>ここにリストアップされます</div>
+      <table id="ptable">
+        <thead><tr><th>No.</th><th>図形</th><th>レイヤ</th><th>寸法</th><th>材質</th><th>板厚</th><th>個数</th><th>備考</th><th></th></tr></thead>
+        <tbody id="ptbody"></tbody>
+      </table>
+    </div>
+    <div id="pfooter">
+      <button id="bcsv2">CSVで保存</button>
+      <span id="psum"></span>
+    </div>
+  </div>
+</div>
+
+<div id="overlay" class="hidden">
+  <div id="dbox">
+    <h3>部品情報を入力</h3>
+    <form id="dform">
+      <div class="fr"><label>寸法</label><input type="text" id="fdims" readonly></div>
+      <div class="fr">
+        <label>材質<span class="req">*</span></label>
+        <select id="fmat">
+          <option value="">-- 選択 --</option>
+          <option>SS400</option><option>SUS304</option><option>SUS316</option>
+          <option>SUS430</option><option>アルミ(A1050)</option><option>アルミ(A5052)</option>
+          <option>銅(C1020)</option><option>その他</option>
+        </select>
+        <input type="text" id="fmatc" placeholder="直接入力">
+      </div>
+      <div class="fr">
+        <label>板厚<span class="req">*</span></label>
+        <select id="fthk">
+          <option value="">-- 選択 --</option>
+          <option>1t</option><option>1.5t</option><option>2t</option><option>2.3t</option>
+          <option>3t</option><option>4t</option><option>4.5t</option><option>5t</option>
+          <option>6t</option><option>9t</option><option>12t</option><option>16t</option>
+          <option>19t</option><option>22t</option><option>25t</option><option>32t</option>
+        </select>
+        <input type="text" id="fthkc" placeholder="例: 6t">
+      </div>
+      <div class="fr"><label>個数</label><input type="number" id="fqty" value="1" min="1"></div>
+      <div class="fr"><label>備考</label><input type="text" id="fnote" placeholder="曲げ・穴加工など"></div>
+      <div class="fa">
+        <button type="button" id="dcancel">キャンセル</button>
+        <button type="submit" id="dok">リストに追加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="parea">
+  <div id="phead2"><h1>材料発注リスト</h1><div id="pmeta"></div></div>
+  <table id="ptable2">
+    <thead><tr><th>No.</th><th>図形</th><th>レイヤ</th><th>寸法</th><th>材質</th><th>板厚</th><th>個数</th><th>備考</th></tr></thead>
+    <tbody id="ptbody2"></tbody>
+  </table>
+  <div id="pfoot2">作成日: <span id="pdate"></span></div>
+</div>
+
+<input type="file" id="file-input" accept=".dxf,.DXF" style="display:none">
+
+<script>
+'use strict';
+// ========== DXF PARSER ==========
+class DxfParser {
+  parse(text) {
+    const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+    const pairs = [];
+    for(let i=0;i+1<lines.length;i+=2) pairs.push({code:parseInt(lines[i].trim(),10),value:lines[i+1]?lines[i+1].trim():''});
+    const r={layers:{},entities:[],blocks:{},header:{}};
+    let i=this._sec(pairs,'TABLES');
+    if(i>=0)this._tables(pairs,i,r.layers);
+    i=this._sec(pairs,'BLOCKS');
+    if(i>=0)this._blocks(pairs,i,r.blocks);
+    i=this._sec(pairs,'ENTITIES');
+    if(i>=0)this._ents(pairs,i,r.entities);
+    r.bounds=this._bounds(r.entities,r.blocks);
+    return r;
+  }
+  _sec(pairs,name){
+    for(let i=0;i<pairs.length;i++)
+      if(pairs[i].code===0&&pairs[i].value==='SECTION'&&pairs[i+1]&&pairs[i+1].code===2&&pairs[i+1].value===name)return i+2;
+    return -1;
+  }
+  _tables(pairs,start,layers){
+    let i=start;
+    while(i<pairs.length){
+      if(pairs[i].code===0&&pairs[i].value==='ENDSEC')break;
+      if(pairs[i].code===0&&pairs[i].value==='LAYER'){
+        const l={name:'',color:7,on:true};i++;
+        while(i<pairs.length&&pairs[i].code!==0){
+          if(pairs[i].code===2)l.name=pairs[i].value;
+          if(pairs[i].code===62){l.color=Math.abs(parseInt(pairs[i].value,10));l.on=parseInt(pairs[i].value,10)>=0;}
+          i++;
+        }
+        if(l.name)layers[l.name]=l;continue;
+      }
+      i++;
+    }
+  }
+  _blocks(pairs,start,blocks){
+    let i=start,cur=null;
+    while(i<pairs.length){
+      if(pairs[i].code===0&&pairs[i].value==='ENDSEC')break;
+      if(pairs[i].code===0&&pairs[i].value==='BLOCK'){cur={name:'',entities:[]};i++;
+        while(i<pairs.length&&pairs[i].code!==0){if(pairs[i].code===2)cur.name=pairs[i].value;i++;}continue;}
+      if(pairs[i].code===0&&pairs[i].value==='ENDBLK'){
+        if(cur&&cur.name&&!cur.name.startsWith('*'))blocks[cur.name]=cur;cur=null;i++;continue;}
+      if(cur&&pairs[i].code===0){const r=this._ent(pairs,i);if(r){cur.entities.push(r.e);i=r.n;continue;}}
+      i++;
+    }
+  }
+  _ents(pairs,start,ents){
+    let i=start;
+    while(i<pairs.length){
+      if(pairs[i].code===0&&pairs[i].value==='ENDSEC')break;
+      if(pairs[i].code===0){const r=this._ent(pairs,i);if(r){ents.push(r.e);i=r.n;continue;}}
+      i++;
+    }
+  }
+  _ent(pairs,start){
+    const type=pairs[start].value;
+    const ok=['LINE','CIRCLE','ARC','LWPOLYLINE','POLYLINE','VERTEX','TEXT','MTEXT','INSERT','SOLID','TRACE','ELLIPSE'];
+    if(!ok.includes(type))return null;
+    const e={type,layer:'0',color:null,handle:null};
+    let i=start+1;
+    while(i<pairs.length&&pairs[i].code!==0){
+      const{code:c,value:v}=pairs[i];
+      if(c===8)e.layer=v;if(c===5)e.handle=v;if(c===62)e.color=Math.abs(parseInt(v,10));
+      switch(e.type){
+        case'LINE':if(c===10)e.x1=+v;else if(c===20)e.y1=+v;else if(c===11)e.x2=+v;else if(c===21)e.y2=+v;break;
+        case'CIRCLE':if(c===10)e.cx=+v;else if(c===20)e.cy=+v;else if(c===40)e.r=+v;break;
+        case'ARC':if(c===10)e.cx=+v;else if(c===20)e.cy=+v;else if(c===40)e.r=+v;else if(c===50)e.sa=+v;else if(c===51)e.ea=+v;break;
+        case'LWPOLYLINE':if(!e.verts)e.verts=[];
+          if(c===70)e.flags=parseInt(v,10);
+          else if(c===10)e.verts.push({x:+v,y:0,b:0});
+          else if(c===20&&e.verts.length)e.verts[e.verts.length-1].y=+v;
+          else if(c===42&&e.verts.length)e.verts[e.verts.length-1].b=+v;break;
+        case'POLYLINE':if(c===70)e.flags=parseInt(v,10);if(!e.verts)e.verts=[];break;
+        case'VERTEX':if(c===10)e.x=+v;else if(c===20)e.y=+v;else if(c===42)e.b=+v||0;break;
+        case'TEXT':if(c===1)e.text=v;else if(c===10)e.x=+v;else if(c===20)e.y=+v;else if(c===40)e.h=+v;break;
+        case'MTEXT':if(c===1)e.text=v.replace(/\\P/g,'\n').replace(/\\[a-zA-Z0-9;:.,]+/g,'').replace(/[{}]/g,'');
+          else if(c===10)e.x=+v;else if(c===20)e.y=+v;else if(c===40)e.h=+v;break;
+        case'INSERT':if(c===2)e.bname=v;else if(c===10)e.x=+v;else if(c===20)e.y=+v;
+          else if(c===41)e.sx=+v;else if(c===42)e.sy=+v;else if(c===50)e.rot=+v;break;
+        case'SOLID':case'TRACE':
+          if(c===10)e.x1=+v;else if(c===20)e.y1=+v;else if(c===11)e.x2=+v;else if(c===21)e.y2=+v;
+          else if(c===12)e.x3=+v;else if(c===22)e.y3=+v;else if(c===13)e.x4=+v;else if(c===23)e.y4=+v;break;
+        case'ELLIPSE':if(c===10)e.cx=+v;else if(c===20)e.cy=+v;else if(c===11)e.mx=+v;else if(c===21)e.my=+v;
+          else if(c===40)e.ratio=+v;else if(c===41)e.sa=+v;else if(c===42)e.ea=+v;break;
+      }
+      i++;
+    }
+    if(e.type==='LWPOLYLINE')e.closed=!!(e.flags&1);
+    if(e.type==='POLYLINE'&&!e.verts)e.verts=[];
+    return{e,n:i};
+  }
+  _bounds(ents,blocks){
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    const ex=(x,y)=>{if(isNaN(x)||isNaN(y))return;x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);};
+    const pe=e=>{
+      if(e.type==='LINE'){ex(e.x1,e.y1);ex(e.x2,e.y2);}
+      else if(e.type==='CIRCLE'){ex(e.cx-e.r,e.cy-e.r);ex(e.cx+e.r,e.cy+e.r);}
+      else if(e.type==='ARC'){ex(e.cx-e.r,e.cy-e.r);ex(e.cx+e.r,e.cy+e.r);}
+      else if((e.type==='LWPOLYLINE'||e.type==='POLYLINE')&&e.verts)e.verts.forEach(v=>ex(v.x,v.y));
+      else if(e.type==='TEXT'||e.type==='MTEXT')ex(e.x,e.y);
+      else if(e.type==='INSERT')ex(e.x,e.y);
+      else if(e.type==='SOLID'||e.type==='TRACE'){ex(e.x1,e.y1);ex(e.x2,e.y2);ex(e.x3,e.y3);ex(e.x4,e.y4);}
+    };
+    ents.forEach(pe);
+    Object.values(blocks).forEach(b=>b.entities.forEach(pe));
+    if(!isFinite(x0))return{minX:0,minY:0,maxX:100,maxY:100,width:100,height:100};
+    return{minX:x0,minY:y0,maxX:x1,maxY:y1,width:x1-x0,height:y1-y0};
+  }
+}
+
+// ========== ACI COLOR ==========
+const ACI=[
+  '#000000','#FF0000','#FFFF00','#00FF00','#00FFFF','#0000FF','#FF00FF','#FFFFFF',
+  '#414141','#808080','#FF0000','#FFAAAA','#BD0000','#BD7E7E','#810000','#815656',
+  '#FF7F00','#FFD4AA','#BD5E00','#BD9D7E','#814000','#816B56','#FFBF00','#FFEAAA',
+  '#FFFF00','#FFFFAA','#BFFF00','#EAFFAA','#7FFF00','#D4FFAA','#3FFF00','#BFFFAA',
+  '#00FF00','#AAFFAA','#00FF7F','#AAFFD4','#00FFBF','#AAFFEA','#00FFFF','#AAFFFF',
+  '#007FFF','#AAD4FF','#0000FF','#AAAAFF','#7F00FF','#D4AAFF','#FF00FF','#FFAAFF',
+  '#FF007F','#FFAAD4','#FF003F','#FFAABF','#333333','#505050','#696969','#828282',
+  '#BEBEBE','#FFFFFF'
+];
+function aci(idx){if(!idx||idx===7)return'#FFFFFF';return ACI[idx]||'#CCCCCC';}
+
+// ========== RENDERER ==========
+class Renderer {
+  constructor(canvas){
+    this.c=canvas;this.ctx=canvas.getContext('2d');
+    this.dxf=null;this.vx=0;this.vy=0;this.sc=1;
+    this.sel=new Set();this._drag=false;this._mx=0;this._my=0;
+    this._onSel=null;this._setup();
+  }
+  load(dxf){this.dxf=dxf;this.sel.clear();this.fit();}
+  onSelect(fn){this._onSel=fn;}
+  fit(){
+    if(!this.dxf)return;
+    const b=this.dxf.bounds,pw=this.c.width,ph=this.c.height,m=40;
+    const sx=(pw-m*2)/(b.width||1),sy=(ph-m*2)/(b.height||1);
+    this.sc=Math.min(sx,sy);
+    this.vx=pw/2-(b.minX+b.width/2)*this.sc;
+    this.vy=ph/2+(b.minY+b.height/2)*this.sc;
+    this.render();
+  }
+  zoom(f,cx,cy){
+    if(cx===undefined){cx=this.c.width/2;cy=this.c.height/2;}
+    const wx=(cx-this.vx)/this.sc,wy=(cy-this.vy)/this.sc;
+    this.sc=Math.max(0.001,Math.min(1000,this.sc*f));
+    this.vx=cx-wx*this.sc;this.vy=cy+wy*this.sc;this.render();
+  }
+  s2w(sx,sy){return{x:(sx-this.vx)/this.sc,y:-(sy-this.vy)/this.sc};}
+  render(){
+    const ctx=this.ctx,w=this.c.width,h=this.c.height;
+    ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,w,h);
+    if(!this.dxf)return;
+    ctx.save();ctx.translate(this.vx,this.vy);ctx.scale(this.sc,-this.sc);
+    for(const e of this.dxf.entities)this._draw(ctx,e);
+    for(const e of this.dxf.entities)if(e.type==='INSERT')this._ins(ctx,e);
+    ctx.restore();
+  }
+  _col(e){
+    if(this.sel.has(e.handle))return'#00FF88';
+    if(e.color!==null&&e.color!==undefined)return aci(e.color);
+    const l=this.dxf.layers[e.layer];
+    return l?aci(l.color):'#FFFFFF';
+  }
+  _draw(ctx,e,ox=0,oy=0){
+    ctx.strokeStyle=ctx.fillStyle=this._col(e);
+    ctx.lineWidth=1/this.sc;
+    switch(e.type){
+      case'LINE':ctx.beginPath();ctx.moveTo((e.x1||0)+ox,(e.y1||0)+oy);ctx.lineTo((e.x2||0)+ox,(e.y2||0)+oy);ctx.stroke();break;
+      case'CIRCLE':ctx.beginPath();ctx.arc((e.cx||0)+ox,(e.cy||0)+oy,e.r||0,0,Math.PI*2);ctx.stroke();break;
+      case'ARC':{const sa=-((e.sa||0)*Math.PI/180),ea=-((e.ea||0)*Math.PI/180);
+        ctx.beginPath();ctx.arc((e.cx||0)+ox,(e.cy||0)+oy,e.r||0,sa,ea,true);ctx.stroke();break;}
+      case'LWPOLYLINE':case'POLYLINE':
+        if(e.verts&&e.verts.length>1){
+          ctx.beginPath();ctx.moveTo(e.verts[0].x+ox,e.verts[0].y+oy);
+          for(let i=0;i<e.verts.length;i++){
+            const v=e.verts[i],vn=e.verts[(i+1)%e.verts.length];
+            if(i+1<e.verts.length)ctx.lineTo(vn.x+ox,vn.y+oy);
+          }
+          if(e.closed)ctx.closePath();ctx.stroke();
+        }break;
+      case'SOLID':case'TRACE':
+        ctx.beginPath();ctx.moveTo((e.x1||0)+ox,(e.y1||0)+oy);ctx.lineTo((e.x2||0)+ox,(e.y2||0)+oy);
+        ctx.lineTo((e.x4||e.x3||0)+ox,(e.y4||e.y3||0)+oy);ctx.lineTo((e.x3||0)+ox,(e.y3||0)+oy);
+        ctx.closePath();ctx.fill();break;
+      case'TEXT':case'MTEXT':{
+        const h=(e.h||2.5)*.8;ctx.save();ctx.scale(1,-1);
+        ctx.font=`${h}px monospace`;ctx.textBaseline='alphabetic';
+        ctx.fillText(e.text||'',(e.x||0)+ox,-((e.y||0)+oy));ctx.restore();break;}
+    }
+  }
+  _ins(ctx,e){
+    const b=this.dxf.blocks[e.bname];if(!b)return;
+    ctx.save();ctx.translate(e.x||0,e.y||0);
+    ctx.rotate(-((e.rot||0)*Math.PI/180));ctx.scale(e.sx||1,e.sy||1);
+    for(const en of b.entities)this._draw(ctx,en);ctx.restore();
+  }
+  hit(sx,sy,thr=10){
+    if(!this.dxf)return null;
+    const w=this.s2w(sx,sy),wt=thr/this.sc;
+    let best=null,bd=Infinity;
+    for(const e of this.dxf.entities){const d=this._dist(e,w.x,w.y);if(d<wt&&d<bd){best=e;bd=d;}}
+    return best;
+  }
+  _dist(e,wx,wy){
+    switch(e.type){
+      case'LINE':return this._ds(wx,wy,e.x1||0,e.y1||0,e.x2||0,e.y2||0);
+      case'CIRCLE':return Math.abs(Math.sqrt((wx-e.cx)**2+(wy-e.cy)**2)-e.r);
+      case'ARC':return Math.abs(Math.sqrt((wx-e.cx)**2+(wy-e.cy)**2)-e.r);
+      case'LWPOLYLINE':case'POLYLINE':{
+        if(!e.verts||!e.verts.length)return Infinity;
+        let m=Infinity;
+        for(let i=0;i+1<e.verts.length;i++){const d=this._ds(wx,wy,e.verts[i].x,e.verts[i].y,e.verts[i+1].x,e.verts[i+1].y);if(d<m)m=d;}
+        if(e.closed&&e.verts.length>2){const l=e.verts.length-1;const d=this._ds(wx,wy,e.verts[l].x,e.verts[l].y,e.verts[0].x,e.verts[0].y);if(d<m)m=d;}
+        return m;}
+      case'TEXT':case'MTEXT':return Math.sqrt((wx-e.x)**2+(wy-e.y)**2);
+      default:return Infinity;
+    }
+  }
+  _ds(px,py,ax,ay,bx,by){
+    const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+    if(l2<1e-10)return Math.sqrt((px-ax)**2+(py-ay)**2);
+    const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l2));
+    return Math.sqrt((px-ax-t*dx)**2+(py-ay-t*dy)**2);
+  }
+  _setup(){
+    const c=this.c;
+    c.addEventListener('wheel',e=>{e.preventDefault();const r=c.getBoundingClientRect();this.zoom(e.deltaY<0?1.15:1/1.15,e.clientX-r.left,e.clientY-r.top);},{passive:false});
+    c.addEventListener('mousedown',e=>{if(e.button===1||e.button===2){this._drag=true;this._mx=e.clientX;this._my=e.clientY;c.style.cursor='grabbing';}});
+    window.addEventListener('mousemove',e=>{if(!this._drag)return;this.vx+=e.clientX-this._mx;this.vy+=e.clientY-this._my;this._mx=e.clientX;this._my=e.clientY;this.render();});
+    window.addEventListener('mouseup',()=>{if(this._drag){this._drag=false;c.style.cursor='crosshair';}});
+    c.addEventListener('click',e=>{const r=c.getBoundingClientRect();const h=this.hit(e.clientX-r.left,e.clientY-r.top);if(h&&this._onSel)this._onSel(h);});
+    c.addEventListener('contextmenu',e=>e.preventDefault());
+  }
+  resize(w,h){this.c.width=w;this.c.height=h;this.render();}
+}
+
+// ========== PARTS ==========
+const parts=[];let nextId=1;
+function guessLayer(name){
+  const n=name.toUpperCase();
+  let mat='',thk='';
+  if(/SS400/.test(n))mat='SS400';else if(/SUS304/.test(n))mat='SUS304';else if(/SUS316/.test(n))mat='SUS316';
+  else if(/SUS/.test(n))mat='SUS';else if(/AL|ALUM/.test(n))mat='アルミ';else if(/SS|STEEL/.test(n))mat='SS400';
+  const m=n.match(/(\d+(?:\.\d+)?)[Tt]/)||n.match(/[Tt](\d+(?:\.\d+)?)/);
+  if(m)thk=m[1]+'t';
+  return{mat,thk};
+}
+function calcDims(e){
+  if(e.type==='LINE'){const dx=(e.x2||0)-(e.x1||0),dy=(e.y2||0)-(e.y1||0);return{L:r(Math.sqrt(dx*dx+dy*dy))};}
+  if(e.type==='CIRCLE')return{D:r((e.r||0)*2),R:r(e.r||0)};
+  if(e.type==='ARC'){const a=((e.ea||0)-(e.sa||0)+360)%360;return{R:r(e.r||0),A:r(a)};}
+  if(e.type==='LWPOLYLINE'||e.type==='POLYLINE'){
+    if(!e.verts||!e.verts.length)return{};
+    let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+    e.verts.forEach(v=>{x0=Math.min(x0,v.x);x1=Math.max(x1,v.x);y0=Math.min(y0,v.y);y1=Math.max(y1,v.y);});
+    return{L:r(x1-x0),W:r(y1-y0)};
+  }
+  return{};
+}
+function r(v){return Math.round(v*100)/100;}
+function fmtDims(d){
+  if(!d)return'-';
+  const p=[];
+  if(d.L!=null)p.push(`L=${d.L}mm`);if(d.W!=null)p.push(`W=${d.W}mm`);
+  if(d.D!=null)p.push(`φ${d.D}mm`);else if(d.R!=null)p.push(`R=${d.R}mm`);
+  if(d.A!=null)p.push(`${d.A}°`);
+  return p.join(' × ')||'-';
+}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+
+// ========== APP ==========
+const parser=new DxfParser();
+let renderer=null,dxf=null,pending=null;
+const canvas=document.getElementById('dxf-canvas');
+const cpane=document.getElementById('cpane');
+
+function resize(){
+  const r=cpane.getBoundingClientRect();
+  canvas.width=r.width;canvas.height=r.height;
+  if(renderer)renderer.render();
+}
+
+renderer=new Renderer(canvas);
+renderer.onSelect(e=>openDialog(e));
+resize();
+window.addEventListener('resize',resize);
+new ResizeObserver(resize).observe(cpane);
+
+function setStatus(s){document.getElementById('status').textContent=s;}
+
+// File open
+document.getElementById('bopen').addEventListener('click',()=>document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    try{
+      dxf=parser.parse(ev.target.result);
+      renderer.load(dxf);
+      setStatus(`${f.name}  —  エンティティ: ${dxf.entities.length}個`);
+      document.getElementById('pmeta').textContent='図面: '+f.name;
+    }catch(err){setStatus('解析エラー: '+err.message);}
+  };
+  rd.readAsText(f,'utf-8');
+  e.target.value='';
+});
+
+// Zoom/fit
+document.getElementById('bfit').addEventListener('click',()=>renderer.fit());
+document.getElementById('bzin').addEventListener('click',()=>renderer.zoom(1.3));
+document.getElementById('bzout').addEventListener('click',()=>renderer.zoom(1/1.3));
+
+// Dialog
+function openDialog(e){
+  if(!dxf)return;
+  pending=e;
+  const dims=calcDims(e);
+  const{mat,thk}=guessLayer(e.layer||'0');
+  document.getElementById('fdims').value=fmtDims(dims);
+  document.getElementById('fmat').value='';document.getElementById('fmatc').value=mat||'';
+  document.getElementById('fthk').value='';document.getElementById('fthkc').value=thk||'';
+  document.getElementById('fqty').value=1;document.getElementById('fnote').value='';
+  const ms=document.getElementById('fmat');for(const o of ms.options)if(o.value===mat){ms.value=mat;break;}
+  const ts=document.getElementById('fthk');for(const o of ts.options)if(o.value===thk){ts.value=thk;break;}
+  document.getElementById('overlay').classList.remove('hidden');
+  document.getElementById('fqty').focus();
+}
+function closeDialog(){document.getElementById('overlay').classList.add('hidden');pending=null;}
+document.getElementById('dcancel').addEventListener('click',closeDialog);
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target===document.getElementById('overlay'))closeDialog();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDialog();});
+
+document.getElementById('dform').addEventListener('submit',e=>{
+  e.preventDefault();if(!pending)return;
+  if(pending.handle&&parts.some(p=>p.handle===pending.handle)){closeDialog();setStatus('このエンティティはすでにリストにあります');return;}
+  const mat=document.getElementById('fmatc').value.trim()||document.getElementById('fmat').value;
+  const thk=document.getElementById('fthkc').value.trim()||document.getElementById('fthk').value;
+  const p={id:nextId++,handle:pending.handle,type:pending.type,layer:pending.layer||'0',dims:calcDims(pending),mat,thk,qty:parseInt(document.getElementById('fqty').value,10)||1,note:document.getElementById('fnote').value.trim()};
+  parts.push(p);
+  renderer.sel.add(pending.handle);renderer.render();
+  renderTable();closeDialog();
+  setStatus(`部品 No.${p.id} を追加（合計 ${parts.length}件）`);
+});
+
+// Clear
+document.getElementById('bclr').addEventListener('click',()=>{
+  if(!parts.length)return;
+  if(confirm('リストをクリアしますか？')){parts.length=0;nextId=1;renderer.sel.clear();renderer.render();renderTable();}
+});
+
+// Table
+function renderTable(){
+  const tb=document.getElementById('ptbody');
+  document.getElementById('pempty').style.display=parts.length?'none':'block';
+  document.getElementById('pcnt').textContent=`(${parts.length}件)`;
+  tb.innerHTML='';
+  parts.forEach(p=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${p.id}</td><td>${p.type}</td><td title="${esc(p.layer)}">${p.layer.length>10?p.layer.slice(0,10)+'…':esc(p.layer)}</td>
+      <td style="font-size:11px;white-space:nowrap">${fmtDims(p.dims)}</td>
+      <td><input type="text" value="${esc(p.mat)}" data-f="mat" data-id="${p.id}"></td>
+      <td><input type="text" value="${esc(p.thk)}" data-f="thk" data-id="${p.id}" style="width:55px"></td>
+      <td><input type="number" value="${p.qty}" min="1" data-f="qty" data-id="${p.id}" style="width:45px"></td>
+      <td><input type="text" value="${esc(p.note)}" data-f="note" data-id="${p.id}"></td>
+      <td><button class="bdel" data-id="${p.id}">×</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>inp.addEventListener('change',e=>{
+    const id=+e.target.dataset.id,f=e.target.dataset.f;
+    const p=parts.find(x=>x.id===id);if(!p)return;
+    p[f]=f==='qty'?(parseInt(e.target.value,10)||1):e.target.value;
+  }));
+  tb.querySelectorAll('.bdel').forEach(b=>b.addEventListener('click',()=>{
+    const id=+b.dataset.id;const p=parts.find(x=>x.id===id);
+    if(p&&p.handle){renderer.sel.delete(p.handle);renderer.render();}
+    parts.splice(parts.findIndex(x=>x.id===id),1);renderTable();
+  }));
+  const tot=parts.reduce((s,p)=>s+(p.qty||1),0);
+  document.getElementById('psum').textContent=`合計 ${parts.length}種 / ${tot}個`;
+}
+
+// Print
+function doPrint(){
+  document.getElementById('pdate').textContent=new Date().toLocaleDateString('ja-JP');
+  const tb=document.getElementById('ptbody2');tb.innerHTML='';
+  parts.forEach(p=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${p.id}</td><td>${p.type}</td><td>${esc(p.layer)}</td><td>${fmtDims(p.dims)}</td><td>${esc(p.mat)}</td><td>${esc(p.thk)}</td><td>${p.qty}</td><td>${esc(p.note)}</td>`;
+    tb.appendChild(tr);
+  });
+  window.print();
+}
+document.getElementById('bprint').addEventListener('click',doPrint);
+
+// CSV
+function doCSV(){
+  const hd=['No.','図形','レイヤ','寸法','材質','板厚','個数','備考'];
+  const rows=parts.map(p=>[p.id,p.type,p.layer,fmtDims(p.dims),p.mat,p.thk,p.qty,p.note]);
+  const csv=[hd,...rows].map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='zumen-pickup-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);
+}
+document.getElementById('bcsv').addEventListener('click',doCSV);
+document.getElementById('bcsv2').addEventListener('click',doCSV);
+
+// Resizer
+const resizer=document.getElementById('resizer'),ppane=document.getElementById('ppane');
+let rdrag=false,rsx=0,rsw=0;
+resizer.addEventListener('mousedown',e=>{rdrag=true;rsx=e.clientX;rsw=ppane.offsetWidth;document.body.style.cursor='col-resize';document.body.style.userSelect='none';});
+window.addEventListener('mousemove',e=>{if(!rdrag)return;ppane.style.width=Math.max(280,Math.min(800,rsw+(rsx-e.clientX)))+'px';resize();});
+window.addEventListener('mouseup',()=>{if(rdrag){rdrag=false;document.body.style.cursor='';document.body.style.userSelect='';}});
+</script>
+</body>
+</html>
