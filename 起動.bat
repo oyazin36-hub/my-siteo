@@ -1,11 +1,15 @@
 @echo off
 title zumen-pickup
 
+call :main > log.txt 2>&1
+notepad log.txt
+exit /b
+
+:main
 echo --- Node.js check ---
 node --version
 if %errorlevel% neq 0 (
     echo [ERROR] Node.js not found. Install from https://nodejs.org/
-    pause
     exit /b 1
 )
 
@@ -16,15 +20,10 @@ echo --- npm install ---
 set ELECTRON_MIRROR=https://github.com/electron/electron/releases/download/
 npm install
 if %errorlevel% neq 0 (
-    echo [ERROR] npm install failed. See above.
-    pause
+    echo [ERROR] npm install failed.
     exit /b 1
 )
 
 echo --- Starting app ---
 npm start
-if %errorlevel% neq 0 (
-    echo [ERROR] App failed to start. See above.
-    pause
-)
-pause
+exit /b
