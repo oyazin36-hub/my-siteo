@@ -1,29 +1,15 @@
 @echo off
-title zumen-pickup
+echo --- Node.js check --- > log.txt 2>&1
+node --version >> log.txt 2>&1
 
-call :main > log.txt 2>&1
-notepad log.txt
-exit /b
-
-:main
-echo --- Node.js check ---
-node --version
-if %errorlevel% neq 0 (
-    echo [ERROR] Node.js not found. Install from https://nodejs.org/
-    exit /b 1
-)
-
-echo --- Removing old electron ---
+echo --- Removing old electron --- >> log.txt 2>&1
 if exist "node_modules\electron" rmdir /s /q "node_modules\electron"
 
-echo --- npm install ---
+echo --- npm install --- >> log.txt 2>&1
 set ELECTRON_MIRROR=https://github.com/electron/electron/releases/download/
-npm install
-if %errorlevel% neq 0 (
-    echo [ERROR] npm install failed.
-    exit /b 1
-)
+npm install >> log.txt 2>&1
 
-echo --- Starting app ---
+echo --- install done --- >> log.txt 2>&1
+notepad log.txt
+
 npm start
-exit /b
