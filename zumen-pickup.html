@@ -208,7 +208,7 @@ class DxfParser {
         continue;
       }
       if(P[i].c===0&&P[i].v==='ENDBLK'){
-        if(cur&&cur.name&&!cur.name.startsWith('*'))blocks[cur.name]=cur;
+        if(cur&&cur.name&&(!cur.name.startsWith('*')||/^\*[Dd]/.test(cur.name)))blocks[cur.name]=cur;
         cur=null; i++; continue;
       }
       if(cur&&P[i].c===0){const r=this._ent(P,i);if(r){cur.entities.push(r.e);i=r.n;continue;}}
@@ -268,7 +268,7 @@ class DxfParser {
           if(c===10)e.x1=+v;else if(c===20)e.y1=+v;else if(c===11)e.x2=+v;else if(c===21)e.y2=+v;
           else if(c===12)e.x3=+v;else if(c===22)e.y3=+v;else if(c===13)e.x4=+v;else if(c===23)e.y4=+v; break;
         case'DIMENSION':
-          if(c===1)e.text=v;else if(c===10)e.defX=+v;else if(c===20)e.defY=+v;
+          if(c===2)e.bname=v;else if(c===1)e.text=v;else if(c===10)e.defX=+v;else if(c===20)e.defY=+v;
           else if(c===11)e.midX=+v;else if(c===21)e.midY=+v;
           else if(c===13)e.d2x=+v;else if(c===23)e.d2y=+v;
           else if(c===42)e.val=+v;else if(c===70)e.dimType=parseInt(v,10); break;
@@ -436,11 +436,11 @@ class Renderer{
     this.balloons=[];
     this.selBBox=null;
     this._drag=false;this._mx=0;this._my=0;
-    this.manualMode=false;this.polyPts=[];this._cx2=0;this._cy2=0;
-    this.onEnt=null;this.onDim=null;this.onHov=null;this.onPolyAdd=null;this.onPolyClose=null;
+    this.manualMode=false;this.manualSel=new Set();
+    this.onEnt=null;this.onDim=null;this.onHov=null;this.onManualChange=null;
     this._setup();
   }
-  load(dxf){this.dxf=dxf;this.selH.clear();this.hovH.clear();this.confH.clear();this.selDim=null;this.hovDim=null;this.balloons=[];this.selBBox=null;this.fit();}
+  load(dxf){this.dxf=dxf;this.selH.clear();this.hovH.clear();this.confH.clear();this.selDim=null;this.hovDim=null;this.balloons=[];this.selBBox=null;this.manualSel.clear();this.fit();}
   fit(){
     if(!this.dxf)return;
     const b=this.dxf.bounds,pw=this.c.width,ph=this.c.height,m=40;
@@ -466,15 +466,16 @@ class Renderer{
     ctx.save();ctx.translate(this.vx,this.vy);ctx.scale(this.sc,-this.sc);
     for(const e of this.dxf.entities)this._draw(ctx,e);
     for(const e of this.dxf.entities)if(e.type==='INSERT')this._ins(ctx,e);
+    for(const e of this.dxf.entities)if(e.type==='DIMENSION'&&e.bname)this._dimBlock(ctx,e);
     ctx.restore();
     this._drawDims();
     this._drawBBox();
     this._drawBalloons();
-    this._drawPolyPreview();
   }
 
   _col(e){
     const h=e.handle;
+    if(this.manualSel.has(h))return'#ce93d8';
     if(this.hovH.has(h))return'#FFDD00';
     if(this.selH.has(h))return'#FF6F00';
     if(this.confH.has(h))return this.confH.get(h);
@@ -539,39 +540,6 @@ class Renderer{
   _drawDims(){
     if(!this.dxf)return;
     const ctx=this.ctx;
-    // ワールド座標系でスパン線・リーダー線・端点ドットを描画
-    ctx.save();
-    ctx.translate(this.vx,this.vy);ctx.scale(this.sc,-this.sc);
-    for(const e of this.dxf.entities){
-      if(e.type!=='DIMENSION'||e.val===undefined)continue;
-      let col='rgba(90,180,90,0.6)';
-      if(e.handle===this.selDim)col='rgba(79,195,247,0.8)';
-      else if(e.handle===this.hovDim)col='rgba(255,221,0,0.8)';
-      ctx.strokeStyle=col;ctx.fillStyle=col;
-      // スパン線（d2→def）: 測定対象の端から端まで
-      if(e.d2x!==undefined&&e.defX!==undefined){
-        ctx.lineWidth=0.8/this.sc;ctx.setLineDash([4/this.sc,3/this.sc]);
-        ctx.beginPath();ctx.moveTo(e.d2x,e.d2y||0);ctx.lineTo(e.defX,e.defY||0);ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      // 端点ドット
-      const dot=3/this.sc;
-      if(e.defX!==undefined){ctx.beginPath();ctx.arc(e.defX,e.defY||0,dot,0,Math.PI*2);ctx.fill();}
-      if(e.d2x!==undefined){ctx.beginPath();ctx.arc(e.d2x,e.d2y||0,dot,0,Math.PI*2);ctx.fill();}
-      // テキスト位置から近い端点へのリーダー線
-      const tx=e.midX!==undefined?e.midX:(e.defX||0);
-      const ty=e.midY!==undefined?e.midY:(e.defY||0);
-      if(e.defX!==undefined){
-        const d1=(tx-e.defX)**2+(ty-(e.defY||0))**2;
-        const d2=e.d2x!==undefined?(tx-e.d2x)**2+(ty-(e.d2y||0))**2:Infinity;
-        const nx=d1<d2?e.defX:e.d2x, ny=d1<d2?(e.defY||0):(e.d2y||0);
-        ctx.lineWidth=0.6/this.sc;ctx.setLineDash([2/this.sc,2/this.sc]);
-        ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(nx,ny);ctx.stroke();
-      }
-      ctx.setLineDash([]);
-    }
-    ctx.restore();
-    // スクリーン座標系でテキストラベルを描画
     for(const e of this.dxf.entities){
       if(e.type!=='DIMENSION'||e.val===undefined)continue;
       const val=Math.round(e.val*10)/10;
@@ -588,6 +556,23 @@ class Renderer{
       ctx.strokeStyle=col;ctx.lineWidth=1;ctx.strokeRect(sp.x-tw/2-4,sp.y-8,tw+8,16);
       ctx.fillStyle=col;ctx.fillText(String(val),sp.x,sp.y);
       ctx.restore();
+    }
+  }
+  _dimBlock(ctx,de){
+    const b=this.dxf&&this.dxf.blocks[de.bname]; if(!b)return;
+    let col='rgba(100,200,100,0.85)';
+    if(de.handle===this.selDim)col='rgba(79,195,247,0.95)';
+    else if(de.handle===this.hovDim)col='rgba(255,221,0,0.95)';
+    ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=0.7/this.sc;ctx.setLineDash([]);
+    for(const en of b.entities){
+      if(en.type==='TEXT'||en.type==='MTEXT')continue;
+      switch(en.type){
+        case'LINE':ctx.beginPath();ctx.moveTo(en.x1||0,en.y1||0);ctx.lineTo(en.x2||0,en.y2||0);ctx.stroke();break;
+        case'SOLID':case'TRACE':
+          ctx.beginPath();ctx.moveTo(en.x1||0,en.y1||0);ctx.lineTo(en.x2||0,en.y2||0);
+          ctx.lineTo(en.x4||en.x3||0,en.y4||en.y3||0);ctx.lineTo(en.x3||0,en.y3||0);
+          ctx.closePath();ctx.fill();break;
+      }
     }
   }
 
@@ -621,21 +606,6 @@ class Renderer{
       ctx.fillText(String(b.num),sp.x,sp.y);
     }
   }
-  _drawPolyPreview(){
-    if(!this.manualMode&&this.polyPts.length===0)return;
-    const ctx=this.ctx,pts=this.polyPts;
-    if(pts.length===0)return;
-    ctx.save();ctx.strokeStyle='#00FF88';ctx.lineWidth=2;ctx.setLineDash([5,3]);
-    ctx.beginPath();
-    const p0=this.w2s(pts[0].x,pts[0].y);ctx.moveTo(p0.x,p0.y);
-    for(let i=1;i<pts.length;i++){const p=this.w2s(pts[i].x,pts[i].y);ctx.lineTo(p.x,p.y);}
-    if(this.manualMode){ctx.lineTo(this._cx2,this._cy2);}
-    ctx.stroke();
-    ctx.setLineDash([]);
-    for(const pt of pts){const p=this.w2s(pt.x,pt.y);ctx.fillStyle='#00FF88';ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();}
-    ctx.restore();
-  }
-
   hitEnt(sx,sy,thr=12){
     if(!this.dxf)return null;
     const w=this.s2w(sx,sy),wt=thr/this.sc;
@@ -690,31 +660,28 @@ class Renderer{
     c.addEventListener('mousemove',e=>{
       if(this._drag)return;
       const r=c.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
-      if(this.manualMode){this._cx2=sx;this._cy2=sy;if(this.polyPts.length>0)this.render();return;}
-      const dim=this.hitDim(sx,sy);
+      const dim=this.manualMode?null:this.hitDim(sx,sy);
       const ent=dim?null:this.hitEnt(sx,sy);
       if((dim?dim.handle:null)!==this.hovDim){this.hovDim=dim?dim.handle:null;this.render();}
       if(this.onHov)this.onHov(ent,dim,e.clientX,e.clientY);
     });
     c.addEventListener('mouseleave',()=>{this.hovDim=null;this.hovH.clear();this.render();if(this.onHov)this.onHov(null,null,0,0);});
     c.addEventListener('click',e=>{
-      if(this._dblclickGuard){this._dblclickGuard=false;return;}
       const r=c.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
       if(this.manualMode){
-        const w=this.s2w(sx,sy);this.polyPts.push(w);this.render();
-        if(this.onPolyAdd)this.onPolyAdd([...this.polyPts]);return;
+        const ent=this.hitEnt(sx,sy);
+        if(ent&&ent.handle){
+          if(this.manualSel.has(ent.handle))this.manualSel.delete(ent.handle);
+          else this.manualSel.add(ent.handle);
+          this.render();
+          if(this.onManualChange)this.onManualChange(this.manualSel.size);
+        }
+        return;
       }
       const dim=this.hitDim(sx,sy);
       if(dim){if(this.onDim)this.onDim(dim);return;}
       const ent=this.hitEnt(sx,sy);
       if(ent&&this.onEnt)this.onEnt(ent);
-    });
-    c.addEventListener('dblclick',e=>{
-      if(!this.manualMode)return;
-      this._dblclickGuard=true;
-      if(this.polyPts.length<2){this.polyPts=[];this.render();return;}
-      const pts=[...this.polyPts];this.polyPts=[];this.render();
-      if(this.onPolyClose)this.onPolyClose(pts);
     });
     c.addEventListener('contextmenu',e=>e.preventDefault());
   }
@@ -798,28 +765,28 @@ renderer.onDim=dim=>{
   setStatus(`板厚 ${val}mm 指定`);
 };
 
-// Manual polygon mode
-document.getElementById('btn-manual').addEventListener('click',()=>{
-  renderer.manualMode=!renderer.manualMode;
-  renderer.polyPts=[];renderer.render();
-  const btn=document.getElementById('btn-manual');
-  btn.style.background=renderer.manualMode?'var(--orange)':'';
-  btn.style.color=renderer.manualMode?'#fff':'';
-  setStatus(renderer.manualMode?'手動選択: 角をクリック → ダブルクリックで確定':'通常モードに戻りました');
-});
-renderer.onPolyClose=pts=>{
-  if(!pts||pts.length<2)return;
-  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
-  for(const p of pts){x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);}
-  const bbox={x0,y0,x1,y1,w:x1-x0,h:y1-y0,cx:(x0+x1)/2,cy:(y0+y1)/2};
-  renderer.selH=new Set();renderer.selBBox=bbox;selGi=-2;currentThk=null;
-  renderer.manualMode=false;
-  const btn=document.getElementById('btn-manual');btn.style.background='';btn.style.color='';
+// Manual line selection mode
+const btnManual=document.getElementById('btn-manual');
+function setManualMode(on){
+  renderer.manualMode=on;
+  if(!on)renderer.manualSel.clear();
+  renderer.selH.clear();renderer.selBBox=null;selGi=-1;
   renderer.render();
-  const dims=`${rnd(bbox.w)} × ${rnd(bbox.h)} mm`;
-  showSelPanel(dims,'手動選択');
-  document.getElementById('mat-sel').value='切板';
-  setStatus(`手動選択確定: ${dims}`);
+  btnManual.style.background=on?'var(--orange)':'';
+  btnManual.style.color=on?'#fff':'';
+  if(on)setStatus('手動選択: 線をクリックして追加、OKで確定（再クリックで解除）');
+  else{resetSelPanel();setStatus('通常モードに戻りました');}
+}
+btnManual.addEventListener('click',()=>setManualMode(!renderer.manualMode));
+renderer.onManualChange=n=>{
+  if(n===0){resetSelPanel();setStatus('手動選択: 線をクリックして追加');return;}
+  const ents=dxf.entities.filter(e=>renderer.manualSel.has(e.handle));
+  const bbox=groupBBox(ents);
+  renderer.selBBox=bbox;selGi=-2;
+  const dims=bbox?`${rnd(bbox.w)} × ${rnd(bbox.h)} mm`:'-';
+  showSelPanel(dims,`手動選択 ${n}本`);
+  document.getElementById('mat-sel').value=predictMat(ents,bbox);
+  setStatus(`手動選択: ${n}本 / ${dims}`);
 };
 
 // Canvas hover
@@ -864,9 +831,13 @@ function resetSelPanel(){
 
 // OK button
 document.getElementById('btn-ok').addEventListener('click',()=>{
-  if(!renderer.selH.size&&!renderer.selBBox)return;
-  const group=selGi>=0?groups[selGi]:selGi===-2?[]:dxf.entities.filter(e=>renderer.selH.has(e.handle));
-  const bbox=selGi===-2?renderer.selBBox:groupBBox(group);
+  if(!renderer.selH.size&&!renderer.selBBox&&!renderer.manualSel.size)return;
+  let group,bbox;
+  if(renderer.manualMode&&renderer.manualSel.size){
+    group=dxf.entities.filter(e=>renderer.manualSel.has(e.handle));
+    bbox=groupBBox(group);
+  }else if(selGi>=0){group=groups[selGi];bbox=groupBBox(group);}
+  else{group=[];bbox=renderer.selBBox;}
   const mat=document.getElementById('mat-sel').value;
   const qty=parseInt(document.getElementById('qty-inp').value)||1;
   const note=document.getElementById('note-inp').value.trim();
@@ -887,6 +858,7 @@ document.getElementById('btn-ok').addEventListener('click',()=>{
     nextNum++;
   }
   renderer.selH.clear();renderer.selBBox=null;selGi=-1;currentThk=null;renderer.selDim=null;
+  if(renderer.manualMode){setManualMode(false);}
   renderer.render();resetSelPanel();renderList();
   setStatus('確定: 合計'+confirmed.length+'種');
 });
