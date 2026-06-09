@@ -90,6 +90,8 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
   .pf{display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px;font-size:9pt}
   .sign-box{display:inline-block;border:1px solid #000;width:70px;height:30px;margin-left:10px;vertical-align:bottom}
   .bb-p{display:inline-flex;width:16px;height:16px;border-radius:50%;align-items:center;justify-content:center;font-size:8pt;font-weight:bold;color:#fff}
+  .pt td.sketch-cell{padding:2px;text-align:center;vertical-align:middle}
+  .pt td.sketch-cell img{width:90px;height:65px;display:block;object-fit:contain}
 }
 </style>
 </head>
@@ -160,8 +162,12 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
     <div><h1>材料発注リスト</h1><div class="ph-sub">株式会社 原マシナリー</div></div>
     <div class="ph-meta" id="ph-meta"></div>
   </div>
+  <div id="p-drawing-wrap" style="display:none;margin-bottom:6mm">
+    <div style="font-size:8pt;font-weight:bold;color:#333;margin-bottom:2mm">■ 図面（バルーン付）</div>
+    <img id="p-canvas-img" style="width:100%;max-height:150px;object-fit:contain;border:1px solid #aaa;display:block">
+  </div>
   <table class="pt">
-    <thead><tr><th>No.</th><th>形状</th><th>材質</th><th>材料種</th><th>寸法</th><th>板厚</th><th>数量</th><th>備考</th></tr></thead>
+    <thead><tr><th>No.</th><th>部品図</th><th>形状</th><th>材質</th><th>材料種</th><th>寸法</th><th>板厚</th><th>数量</th><th>備考</th></tr></thead>
     <tbody id="pt-body"></tbody>
   </table>
   <div class="pf">
@@ -730,6 +736,8 @@ class Renderer{
     c.addEventListener('click',e=>{
       const r=c.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
       if(this.manualMode){
+        const dimHit=this.hitDim(sx,sy);
+        if(dimHit){if(this.onDim)this.onDim(dimHit);return;}
         const ent=this.hitEnt(sx,sy);
         if(ent&&ent.handle){
           if(this.manualSel.has(ent.handle))this.manualSel.delete(ent.handle);
@@ -918,7 +926,8 @@ document.getElementById('btn-ok').addEventListener('click',()=>{
   if(exist){exist.qty+=qty;}
   else{
     const color=BCOLS[(nextNum-1)%BCOLS.length];
-    const p={id:Date.now(),handles:[...renderer.selH],mat,thk,qty,note,dims,bbox,balloonNum:nextNum,color};
+    const handles=renderer.manualMode&&renderer.manualSel.size?[...renderer.manualSel]:[...renderer.selH];
+    const p={id:Date.now(),handles,mat,thk,qty,note,dims,bbox,balloonNum:nextNum,color};
     confirmed.push(p);
     p.handles.forEach(h=>renderer.confH.set(h,color));
     if(bbox){const off=Math.max(bbox.w,bbox.h)*0.25+15;renderer.balloons.push({num:nextNum,color,ax:bbox.cx,ay:bbox.cy,cx:bbox.cx+off,cy:bbox.cy+off});}
@@ -1006,6 +1015,48 @@ document.getElementById('btn-csv').addEventListener('click',()=>{
   const a2=document.createElement('a');a2.href=url;a2.download='zumen-pickup-'+new Date().toISOString().slice(0,10)+'.csv';a2.click();URL.revokeObjectURL(url);
 });
 
+// Part sketch renderer for print
+function partSketch(p){
+  if(!dxf||!p.bbox)return '';
+  const ents=(p.handles&&p.handles.length)?dxf.entities.filter(e=>p.handles.includes(e.handle)):[];
+  const CW=100,CH=80,LBLH=18,m=6;
+  const c=document.createElement('canvas');c.width=CW;c.height=CH;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,CW,CH);
+  const b=p.bbox;
+  const sc=Math.min((CW-m*2)/(b.w||1),(CH-LBLH-m*2)/(b.h||1))*0.88;
+  const tx=CW/2-b.cx*sc,ty=(CH-LBLH)/2+b.cy*sc;
+  ctx.save();ctx.translate(tx,ty);ctx.scale(sc,-sc);
+  ctx.strokeStyle='#222';ctx.lineWidth=0.8/sc;
+  for(const e of ents){
+    ctx.beginPath();
+    switch(e.type){
+      case'LINE':ctx.moveTo(e.x1||0,e.y1||0);ctx.lineTo(e.x2||0,e.y2||0);break;
+      case'CIRCLE':ctx.arc(e.cx||0,e.cy||0,e.r||0,0,Math.PI*2);break;
+      case'ARC':{const sa=-((e.sa||0)*Math.PI/180),ea=-((e.ea||0)*Math.PI/180);ctx.arc(e.cx||0,e.cy||0,e.r||0,sa,ea,true);break;}
+      case'ELLIPSE':{const rx=Math.sqrt((e.mx||0)**2+(e.my||0)**2),ry=rx*(e.ratio||1);
+        ctx.save();ctx.translate(e.cx||0,e.cy||0);ctx.rotate(-Math.atan2(e.my||0,e.mx||1));
+        ctx.ellipse(0,0,rx,ry,0,-(e.ea||Math.PI*2),-(e.sa||0),true);ctx.restore();break;}
+      case'LWPOLYLINE':case'POLYLINE':
+        if(e.verts&&e.verts.length>1){ctx.moveTo(e.verts[0].x,e.verts[0].y);
+          for(let i=1;i<e.verts.length;i++)ctx.lineTo(e.verts[i].x,e.verts[i].y);
+          if(e.closed)ctx.closePath();}break;
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  // Bounding box reference
+  if(ents.length===0){
+    ctx.strokeStyle='#bbb';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+    ctx.strokeRect(m,m,CW-m*2,CH-LBLH-m*2);ctx.setLineDash([]);
+  }
+  // Dimension & thickness labels
+  ctx.font='bold 8px sans-serif';ctx.textAlign='center';
+  ctx.fillStyle='#222';ctx.fillText(`${p.dims} mm`,CW/2,CH-LBLH+10);
+  if(p.thk){ctx.fillStyle='#1565c0';ctx.fillText(`t${p.thk.replace('mm','')}`,CW/2,CH-3);}
+  return c.toDataURL('image/png');
+}
+
 // Print
 document.getElementById('btn-print').addEventListener('click',()=>{
   const a=dxf&&dxf.attribs||{};
@@ -1016,10 +1067,18 @@ document.getElementById('btn-print').addEventListener('click',()=>{
   if(a['材質'])ms.push('<div>材質: '+esc(a['材質'])+'</div>');
   document.getElementById('ph-meta').innerHTML=ms.join('');
   document.getElementById('p-date').textContent=new Date().toLocaleDateString('ja-JP');
+  // 図面スナップショット
+  const dwrap=document.getElementById('p-drawing-wrap');
+  if(confirmed.length&&dxf){
+    document.getElementById('p-canvas-img').src=canvas.toDataURL('image/png');
+    dwrap.style.display='block';
+  }else{dwrap.style.display='none';}
   const tb=document.getElementById('pt-body');tb.innerHTML='';
   confirmed.forEach(p=>{
     const tr=document.createElement('tr');
+    const sk=partSketch(p);
     tr.innerHTML=`<td><span class="bb-p" style="background:${p.color}">${p.balloonNum}</span></td>
+      <td class="sketch-cell">${sk?`<img src="${sk}">`:''}</td>
       <td>${esc(MAT_SHAPE[p.mat]||p.mat)}</td><td>${esc(a['材質']||'SS400')}</td>
       <td>${esc(p.mat)}</td><td>${esc(p.dims)} mm</td>
       <td>${esc(p.thk)}</td><td>${p.qty}</td><td>${esc(p.note)}</td>`;
