@@ -462,9 +462,8 @@ function predictMat(group,bbox){
 }
 
 // ===== JIS STANDARD THICKNESS =====
-const JIS_THK=[0.4,0.5,0.6,0.7,0.8,1.0,1.2,1.6,2.0,2.3,2.6,3.2,4.0,4.5,
-  5,6,7,8,9,10,11,12,13,14,16,19,22,25,28,32,36,40,45,50,55,60,65,70,75,80,90,100];
-function snapJIS(v){let b=JIS_THK[0],bd=Infinity;for(const t of JIS_THK){const d=Math.abs(v-t);if(d<bd){bd=d;b=t;}}return b;}
+const JIS_THK=[1.6,2.0,2.3,2.6,3.2,4.5,6,9,12,16,19,22,25,28,32,36,40,45,50,60,75,90,100];
+function snapJIS(v){for(const t of JIS_THK){if(t>=v-0.05)return t;}return JIS_THK[JIS_THK.length-1];}
 
 // ===== MATERIAL SHAPE NAMES (JIS正式名称) =====
 const MAT_SHAPE={
