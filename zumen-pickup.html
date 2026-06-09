@@ -480,9 +480,9 @@ class Renderer{
     if(this.confH.has(h))return this.confH.get(h);
     const cl=classifyLayer(e.layer||'0');
     if(cl==='title')return null;
-    if(cl==='annotation')return'#1e3020';
-    if(cl==='hidden')return'#2a2a55';
-    if(cl==='dimension')return'#1e2e1e';
+    if(cl==='annotation')return'#1a4a30';
+    if(cl==='hidden')return'#2a3565';
+    if(cl==='dimension')return'#3a6a3a';
     if(e.color!==null&&e.color!==undefined)return aci(e.color);
     const l=this.dxf&&this.dxf.layers[e.layer];
     return l?aci(l.color):'#FFFFFF';
@@ -539,20 +539,54 @@ class Renderer{
   _drawDims(){
     if(!this.dxf)return;
     const ctx=this.ctx;
+    // ワールド座標系でスパン線・リーダー線・端点ドットを描画
+    ctx.save();
+    ctx.translate(this.vx,this.vy);ctx.scale(this.sc,-this.sc);
+    for(const e of this.dxf.entities){
+      if(e.type!=='DIMENSION'||e.val===undefined)continue;
+      let col='rgba(90,180,90,0.6)';
+      if(e.handle===this.selDim)col='rgba(79,195,247,0.8)';
+      else if(e.handle===this.hovDim)col='rgba(255,221,0,0.8)';
+      ctx.strokeStyle=col;ctx.fillStyle=col;
+      // スパン線（d2→def）: 測定対象の端から端まで
+      if(e.d2x!==undefined&&e.defX!==undefined){
+        ctx.lineWidth=0.8/this.sc;ctx.setLineDash([4/this.sc,3/this.sc]);
+        ctx.beginPath();ctx.moveTo(e.d2x,e.d2y||0);ctx.lineTo(e.defX,e.defY||0);ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      // 端点ドット
+      const dot=3/this.sc;
+      if(e.defX!==undefined){ctx.beginPath();ctx.arc(e.defX,e.defY||0,dot,0,Math.PI*2);ctx.fill();}
+      if(e.d2x!==undefined){ctx.beginPath();ctx.arc(e.d2x,e.d2y||0,dot,0,Math.PI*2);ctx.fill();}
+      // テキスト位置から近い端点へのリーダー線
+      const tx=e.midX!==undefined?e.midX:(e.defX||0);
+      const ty=e.midY!==undefined?e.midY:(e.defY||0);
+      if(e.defX!==undefined){
+        const d1=(tx-e.defX)**2+(ty-(e.defY||0))**2;
+        const d2=e.d2x!==undefined?(tx-e.d2x)**2+(ty-(e.d2y||0))**2:Infinity;
+        const nx=d1<d2?e.defX:e.d2x, ny=d1<d2?(e.defY||0):(e.d2y||0);
+        ctx.lineWidth=0.6/this.sc;ctx.setLineDash([2/this.sc,2/this.sc]);
+        ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(nx,ny);ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+    // スクリーン座標系でテキストラベルを描画
     for(const e of this.dxf.entities){
       if(e.type!=='DIMENSION'||e.val===undefined)continue;
       const val=Math.round(e.val*10)/10;
       const tx=e.midX!==undefined?e.midX:(e.defX||0);
       const ty=e.midY!==undefined?e.midY:(e.defY||0);
       const sp=this.w2s(tx,ty);
-      let color='#3a6a3a';
-      if(e.handle===this.selDim)color='#4fc3f7';
-      else if(e.handle===this.hovDim)color='#FFDD00';
+      let col='#72d672';
+      if(e.handle===this.selDim)col='#4fc3f7';
+      else if(e.handle===this.hovDim)col='#FFDD00';
       ctx.save();
       ctx.font='bold 11px monospace';ctx.textAlign='center';ctx.textBaseline='middle';
       const tw=ctx.measureText(String(val)).width;
-      ctx.fillStyle='rgba(20,20,40,0.85)';ctx.fillRect(sp.x-tw/2-3,sp.y-7,tw+6,14);
-      ctx.fillStyle=color;ctx.fillText(String(val),sp.x,sp.y);
+      ctx.fillStyle='rgba(12,18,28,0.93)';ctx.fillRect(sp.x-tw/2-4,sp.y-8,tw+8,16);
+      ctx.strokeStyle=col;ctx.lineWidth=1;ctx.strokeRect(sp.x-tw/2-4,sp.y-8,tw+8,16);
+      ctx.fillStyle=col;ctx.fillText(String(val),sp.x,sp.y);
       ctx.restore();
     }
   }
