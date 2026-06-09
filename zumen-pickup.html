@@ -90,6 +90,7 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
   <button id="bzin">＋</button>
   <button id="bzout">－</button>
   <div class="sep"></div>
+  <button id="btn-manual">✏ 手動選択</button>
   <button id="btn-undo" title="Ctrl+Z">↩ Undo</button>
   <button id="btn-save">💾 保存</button>
   <button id="btn-load">📂 再開</button>
@@ -403,7 +404,16 @@ function groupBBox(group){
 function predictMat(group,bbox){
   if(!bbox)return'切板';
   const ratio=Math.max(bbox.w,bbox.h)/(Math.min(bbox.w,bbox.h)||1);
-  if(ratio>=8)return'FB（平鋼）';
+  if(ratio>=10)return'FB（平鋼）';
+  const lines=group.filter(e=>e.type==='LINE');
+  const circles=group.filter(e=>e.type==='CIRCLE');
+  if(circles.length>0&&lines.length===0)return'パイプ（丸）';
+  if(lines.length>=6){
+    const cx=bbox.cx,cy=bbox.cy;const qs=new Set();
+    for(const e of lines){const mx=((e.x1||0)+(e.x2||0))/2,my=((e.y1||0)+(e.y2||0))/2;qs.add((mx>cx?2:0)+(my>cy?1:0));}
+    if(qs.size<=2)return'アングル';
+    if(qs.size===3)return'チャンネル';
+  }
   return'切板';
 }
 
@@ -426,7 +436,8 @@ class Renderer{
     this.balloons=[];
     this.selBBox=null;
     this._drag=false;this._mx=0;this._my=0;
-    this.onEnt=null;this.onDim=null;this.onHov=null;
+    this.manualMode=false;this.polyPts=[];this._cx2=0;this._cy2=0;
+    this.onEnt=null;this.onDim=null;this.onHov=null;this.onPolyAdd=null;this.onPolyClose=null;
     this._setup();
   }
   load(dxf){this.dxf=dxf;this.selH.clear();this.hovH.clear();this.confH.clear();this.selDim=null;this.hovDim=null;this.balloons=[];this.selBBox=null;this.fit();}
@@ -459,6 +470,7 @@ class Renderer{
     this._drawDims();
     this._drawBBox();
     this._drawBalloons();
+    this._drawPolyPreview();
   }
 
   _col(e){
@@ -557,7 +569,16 @@ class Renderer{
   _drawBalloons(){
     const ctx=this.ctx;
     for(const b of this.balloons){
-      const sp=this.w2s(b.cx,b.cy); const R=13;
+      const sp=this.w2s(b.cx,b.cy);const R=13;
+      if(b.ax!==undefined){
+        const ap=this.w2s(b.ax,b.ay);
+        const dx=sp.x-ap.x,dy=sp.y-ap.y,len=Math.sqrt(dx*dx+dy*dy);
+        if(len>R+4){
+          ctx.save();ctx.beginPath();ctx.moveTo(ap.x,ap.y);
+          ctx.lineTo(sp.x-dx/len*R,sp.y-dy/len*R);
+          ctx.strokeStyle=b.color;ctx.lineWidth=1.5;ctx.setLineDash([]);ctx.stroke();ctx.restore();
+        }
+      }
       ctx.beginPath();ctx.arc(sp.x,sp.y,R,0,Math.PI*2);
       ctx.fillStyle=b.color+'cc';ctx.fill();
       ctx.strokeStyle=b.color;ctx.lineWidth=2;ctx.stroke();
@@ -565,6 +586,20 @@ class Renderer{
       ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillText(String(b.num),sp.x,sp.y);
     }
+  }
+  _drawPolyPreview(){
+    if(!this.manualMode&&this.polyPts.length===0)return;
+    const ctx=this.ctx,pts=this.polyPts;
+    if(pts.length===0)return;
+    ctx.save();ctx.strokeStyle='#00FF88';ctx.lineWidth=2;ctx.setLineDash([5,3]);
+    ctx.beginPath();
+    const p0=this.w2s(pts[0].x,pts[0].y);ctx.moveTo(p0.x,p0.y);
+    for(let i=1;i<pts.length;i++){const p=this.w2s(pts[i].x,pts[i].y);ctx.lineTo(p.x,p.y);}
+    if(this.manualMode){ctx.lineTo(this._cx2,this._cy2);}
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for(const pt of pts){const p=this.w2s(pt.x,pt.y);ctx.fillStyle='#00FF88';ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();}
+    ctx.restore();
   }
 
   hitEnt(sx,sy,thr=12){
@@ -621,6 +656,7 @@ class Renderer{
     c.addEventListener('mousemove',e=>{
       if(this._drag)return;
       const r=c.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+      if(this.manualMode){this._cx2=sx;this._cy2=sy;if(this.polyPts.length>0)this.render();return;}
       const dim=this.hitDim(sx,sy);
       const ent=dim?null:this.hitEnt(sx,sy);
       if((dim?dim.handle:null)!==this.hovDim){this.hovDim=dim?dim.handle:null;this.render();}
@@ -628,11 +664,23 @@ class Renderer{
     });
     c.addEventListener('mouseleave',()=>{this.hovDim=null;this.hovH.clear();this.render();if(this.onHov)this.onHov(null,null,0,0);});
     c.addEventListener('click',e=>{
+      if(this._dblclickGuard){this._dblclickGuard=false;return;}
       const r=c.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+      if(this.manualMode){
+        const w=this.s2w(sx,sy);this.polyPts.push(w);this.render();
+        if(this.onPolyAdd)this.onPolyAdd([...this.polyPts]);return;
+      }
       const dim=this.hitDim(sx,sy);
       if(dim){if(this.onDim)this.onDim(dim);return;}
       const ent=this.hitEnt(sx,sy);
       if(ent&&this.onEnt)this.onEnt(ent);
+    });
+    c.addEventListener('dblclick',e=>{
+      if(!this.manualMode)return;
+      this._dblclickGuard=true;
+      if(this.polyPts.length<2){this.polyPts=[];this.render();return;}
+      const pts=[...this.polyPts];this.polyPts=[];this.render();
+      if(this.onPolyClose)this.onPolyClose(pts);
     });
     c.addEventListener('contextmenu',e=>e.preventDefault());
   }
@@ -716,6 +764,30 @@ renderer.onDim=dim=>{
   setStatus(`板厚 ${val}mm 指定`);
 };
 
+// Manual polygon mode
+document.getElementById('btn-manual').addEventListener('click',()=>{
+  renderer.manualMode=!renderer.manualMode;
+  renderer.polyPts=[];renderer.render();
+  const btn=document.getElementById('btn-manual');
+  btn.style.background=renderer.manualMode?'var(--orange)':'';
+  btn.style.color=renderer.manualMode?'#fff':'';
+  setStatus(renderer.manualMode?'手動選択: 角をクリック → ダブルクリックで確定':'通常モードに戻りました');
+});
+renderer.onPolyClose=pts=>{
+  if(!pts||pts.length<2)return;
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  for(const p of pts){x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);}
+  const bbox={x0,y0,x1,y1,w:x1-x0,h:y1-y0,cx:(x0+x1)/2,cy:(y0+y1)/2};
+  renderer.selH=new Set();renderer.selBBox=bbox;selGi=-2;currentThk=null;
+  renderer.manualMode=false;
+  const btn=document.getElementById('btn-manual');btn.style.background='';btn.style.color='';
+  renderer.render();
+  const dims=`${rnd(bbox.w)} × ${rnd(bbox.h)} mm`;
+  showSelPanel(dims,'手動選択');
+  document.getElementById('mat-sel').value='切板';
+  setStatus(`手動選択確定: ${dims}`);
+};
+
 // Canvas hover
 renderer.onHov=(ent,dim,mx,my)=>{
   const newH=new Set();
@@ -758,9 +830,9 @@ function resetSelPanel(){
 
 // OK button
 document.getElementById('btn-ok').addEventListener('click',()=>{
-  if(!renderer.selH.size)return;
-  const group=selGi>=0?groups[selGi]:dxf.entities.filter(e=>renderer.selH.has(e.handle));
-  const bbox=groupBBox(group);
+  if(!renderer.selH.size&&!renderer.selBBox)return;
+  const group=selGi>=0?groups[selGi]:selGi===-2?[]:dxf.entities.filter(e=>renderer.selH.has(e.handle));
+  const bbox=selGi===-2?renderer.selBBox:groupBBox(group);
   const mat=document.getElementById('mat-sel').value;
   const qty=parseInt(document.getElementById('qty-inp').value)||1;
   const note=document.getElementById('note-inp').value.trim();
@@ -777,7 +849,7 @@ document.getElementById('btn-ok').addEventListener('click',()=>{
     const p={id:Date.now(),handles:[...renderer.selH],mat,thk,qty,note,dims,bbox,balloonNum:nextNum,color};
     confirmed.push(p);
     p.handles.forEach(h=>renderer.confH.set(h,color));
-    if(bbox)renderer.balloons.push({num:nextNum,color,cx:bbox.cx,cy:bbox.cy});
+    if(bbox){const off=Math.max(bbox.w,bbox.h)*0.25+15;renderer.balloons.push({num:nextNum,color,ax:bbox.cx,ay:bbox.cy,cx:bbox.cx+off,cy:bbox.cy+off});}
     nextNum++;
   }
   renderer.selH.clear();renderer.selBBox=null;selGi=-1;currentThk=null;renderer.selDim=null;
@@ -842,7 +914,7 @@ document.getElementById('load-input').addEventListener('change',e=>{
       renderer.confH.clear();renderer.balloons=[];
       confirmed.forEach(p=>{
         p.handles.forEach(h=>renderer.confH.set(h,p.color));
-        if(p.bbox)renderer.balloons.push({num:p.balloonNum,color:p.color,cx:p.bbox.cx,cy:p.bbox.cy});
+        if(p.bbox){const off=Math.max(p.bbox.w,p.bbox.h)*0.25+15;renderer.balloons.push({num:p.balloonNum,color:p.color,ax:p.bbox.cx,ay:p.bbox.cy,cx:p.bbox.cx+off,cy:p.bbox.cy+off});}
       });
       renderer.render();renderList();setStatus('保存データ読み込み完了');
     }catch(err){alert('読み込みエラー: '+err.message);}
