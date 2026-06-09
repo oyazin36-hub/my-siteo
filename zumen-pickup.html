@@ -680,7 +680,7 @@ class Renderer{
     }
     return best;
   }
-  hitDim(sx,sy,thr=14){
+  hitDim(sx,sy,thr=18){
     if(!this.dxf)return null;
     for(const e of this.dxf.entities){
       if(e.type!=='DIMENSION'||e.val===undefined)continue;
@@ -819,10 +819,16 @@ renderer.onEnt=ent=>{
 renderer.onDim=dim=>{
   const raw=Math.round(dim.val*10)/10;
   const jis=snapJIS(raw);
-  document.getElementById('thk-inp').value=jis;
-  document.getElementById('thk-jis').textContent=raw!==jis?`(元${raw})`:'✓JIS';
+  // 板厚パネルを必ず表示
+  document.getElementById('sel-none').style.display='none';
+  document.getElementById('sel-info').style.display='block';
+  const inp=document.getElementById('thk-inp');
+  inp.value=jis;
+  inp.style.color='var(--blue)';
+  inp.style.borderBottom='2px solid var(--blue)';
+  document.getElementById('thk-jis').textContent=raw!==jis?`(元${raw}mm)`:'✓JIS';
   renderer.selDim=dim.handle; renderer.render();
-  setStatus(`板厚 ${jis}mm (JIS) 指定 ← 元寸法: ${raw}mm`);
+  setStatus(`板厚 ${jis}mm (JIS) ← 元: ${raw}mm`);
 };
 
 // Manual line selection mode
@@ -882,7 +888,8 @@ function showSelPanel(dims,layer){
 function resetSelPanel(){
   document.getElementById('sel-none').style.display='block';
   document.getElementById('sel-info').style.display='none';
-  document.getElementById('thk-inp').value='';
+  const inp=document.getElementById('thk-inp');
+  inp.value=''; inp.style.borderBottom=''; inp.style.color='';
   document.getElementById('thk-jis').textContent='';
   document.getElementById('qty-inp').value=1;
   document.getElementById('note-inp').value='';
