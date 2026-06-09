@@ -31,9 +31,21 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
 #sel-layer{font-size:10px;color:var(--muted);margin-bottom:10px}
 #thk-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:6px 10px;background:var(--bg3);border-radius:5px;border:1px solid var(--border)}
 #thk-label{font-size:11px;color:var(--muted);flex-shrink:0}
-#thk-val{font-size:15px;font-weight:bold;color:var(--muted);flex:1}
-#thk-val.set{color:var(--blue)}
-#thk-hint{font-size:10px;color:var(--muted)}
+#thk-inp{width:55px;background:transparent;border:none;font-size:15px;font-weight:bold;color:var(--blue);outline:none;padding:0;text-align:right;-moz-appearance:textfield}
+#thk-inp::-webkit-outer-spin-button,#thk-inp::-webkit-inner-spin-button{-webkit-appearance:none}
+#thk-inp::placeholder{color:var(--muted);font-size:12px;font-weight:normal}
+#thk-unit{font-size:11px;color:var(--muted)}
+#thk-jis{font-size:10px;color:var(--muted);flex:1;text-align:right}
+/* calculator */
+#calc-panel{position:fixed;bottom:80px;right:330px;width:218px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.65);z-index:300;padding:10px;display:none}
+#calc-disp{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-family:monospace;font-size:22px;text-align:right;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#calc-sub{font-size:10px;color:var(--muted);text-align:right;min-height:15px;margin-top:2px;margin-bottom:6px}
+.calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.cb{padding:9px 4px;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:14px;text-align:center;background:var(--bg3);color:var(--text);user-select:none;transition:background .1s}
+.cb:hover{background:#1e3a6e}.cb:active{background:var(--bg)}
+.cb.op{color:var(--blue);background:#0d1f3a}.cb.op:hover{background:#1a4080}
+.cb.eq{background:var(--orange);color:#fff;border-color:#e65c00}.cb.eq:hover{background:#e65c00}
+.cb.cl{color:var(--accent2)}.cb.wide{grid-column:span 2}
 .form-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .form-row label{font-size:11px;color:var(--muted);width:36px;flex-shrink:0}
 .form-row select,.form-row input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 7px;font-size:12px;outline:none}
@@ -91,6 +103,7 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
   <button id="bzout">－</button>
   <div class="sep"></div>
   <button id="btn-manual">✏ 手動選択</button>
+  <button id="btn-calc">🧮 計算機</button>
   <button id="btn-undo" title="Ctrl+Z">↩ Undo</button>
   <button id="btn-save">💾 保存</button>
   <button id="btn-load">📂 再開</button>
@@ -113,8 +126,9 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
         <div id="sel-layer"></div>
         <div id="thk-row">
           <span id="thk-label">板厚</span>
-          <span id="thk-val">未指定</span>
-          <span id="thk-hint">← 寸法数字をクリック</span>
+          <input type="number" id="thk-inp" placeholder="未指定" min="0.1" step="0.5">
+          <span id="thk-unit">mm</span>
+          <span id="thk-jis"></span>
         </div>
         <div class="form-row"><label>材料</label>
           <select id="mat-sel">
@@ -147,12 +161,42 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
     <div class="ph-meta" id="ph-meta"></div>
   </div>
   <table class="pt">
-    <thead><tr><th>No.</th><th>材質</th><th>材料種</th><th>寸法</th><th>板厚</th><th>数量</th><th>備考</th></tr></thead>
+    <thead><tr><th>No.</th><th>形状</th><th>材質</th><th>材料種</th><th>寸法</th><th>板厚</th><th>数量</th><th>備考</th></tr></thead>
     <tbody id="pt-body"></tbody>
   </table>
   <div class="pf">
     <div>発行日: <span id="p-date"></span></div>
     <div>確認<span class="sign-box"></span>　承認<span class="sign-box"></span></div>
+  </div>
+</div>
+
+<div id="calc-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+    <span style="font-size:11px;color:var(--muted);font-weight:bold;letter-spacing:.5px">CALCULATOR</span>
+    <button onclick="document.getElementById('calc-panel').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1">×</button>
+  </div>
+  <div id="calc-sub"></div>
+  <div id="calc-disp">0</div>
+  <div class="calc-grid" style="margin-top:6px">
+    <button class="cb cl" data-cv="C">C</button>
+    <button class="cb op" data-cv="⌫">⌫</button>
+    <button class="cb op" data-cv="%">%</button>
+    <button class="cb op" data-cv="÷">÷</button>
+    <button class="cb" data-cv="7">7</button>
+    <button class="cb" data-cv="8">8</button>
+    <button class="cb" data-cv="9">9</button>
+    <button class="cb op" data-cv="×">×</button>
+    <button class="cb" data-cv="4">4</button>
+    <button class="cb" data-cv="5">5</button>
+    <button class="cb" data-cv="6">6</button>
+    <button class="cb op" data-cv="-">-</button>
+    <button class="cb" data-cv="1">1</button>
+    <button class="cb" data-cv="2">2</button>
+    <button class="cb" data-cv="3">3</button>
+    <button class="cb op" data-cv="+">+</button>
+    <button class="cb wide" data-cv="0">0</button>
+    <button class="cb" data-cv=".">.</button>
+    <button class="cb eq" data-cv="=">=</button>
   </div>
 </div>
 
@@ -416,6 +460,24 @@ function predictMat(group,bbox){
   }
   return'切板';
 }
+
+// ===== JIS STANDARD THICKNESS =====
+const JIS_THK=[0.4,0.5,0.6,0.7,0.8,1.0,1.2,1.6,2.0,2.3,2.6,3.2,4.0,4.5,
+  5,6,7,8,9,10,11,12,13,14,16,19,22,25,28,32,36,40,45,50,55,60,65,70,75,80,90,100];
+function snapJIS(v){let b=JIS_THK[0],bd=Infinity;for(const t of JIS_THK){const d=Math.abs(v-t);if(d<bd){bd=d;b=t;}}return b;}
+
+// ===== MATERIAL SHAPE NAMES (JIS正式名称) =====
+const MAT_SHAPE={
+  '切板':'平板',
+  'FB（平鋼）':'平鋼',
+  '角パイプ':'角形鋼管',
+  'アングル':'等辺山形鋼',
+  'チャンネル':'溝形鋼',
+  'H鋼':'H形鋼',
+  '丸棒':'丸鋼',
+  'パイプ（丸）':'鋼管',
+  'その他':'-',
+};
 
 // ===== BALLOON COLORS =====
 const BCOLS=['#e53935','#1e88e5','#43a047','#fb8c00','#8e24aa',
@@ -754,15 +816,14 @@ renderer.onEnt=ent=>{
   setStatus(`グループ選択: ${group.length}エンティティ, ${dims}`);
 };
 
-// Dimension click → thickness
+// Dimension click → thickness (JIS snap)
 renderer.onDim=dim=>{
-  const val=Math.round(dim.val);
-  currentThk=val;
+  const raw=Math.round(dim.val*10)/10;
+  const jis=snapJIS(raw);
+  document.getElementById('thk-inp').value=jis;
+  document.getElementById('thk-jis').textContent=raw!==jis?`(元${raw})`:'✓JIS';
   renderer.selDim=dim.handle; renderer.render();
-  const tv=document.getElementById('thk-val');
-  tv.textContent=val+' mm'; tv.className='set';
-  document.getElementById('thk-hint').style.display='none';
-  setStatus(`板厚 ${val}mm 指定`);
+  setStatus(`板厚 ${jis}mm (JIS) 指定 ← 元寸法: ${raw}mm`);
 };
 
 // Manual line selection mode
@@ -822,9 +883,8 @@ function showSelPanel(dims,layer){
 function resetSelPanel(){
   document.getElementById('sel-none').style.display='block';
   document.getElementById('sel-info').style.display='none';
-  const tv=document.getElementById('thk-val');
-  tv.textContent='未指定'; tv.className='';
-  document.getElementById('thk-hint').style.display='inline';
+  document.getElementById('thk-inp').value='';
+  document.getElementById('thk-jis').textContent='';
   document.getElementById('qty-inp').value=1;
   document.getElementById('note-inp').value='';
 }
@@ -841,7 +901,8 @@ document.getElementById('btn-ok').addEventListener('click',()=>{
   const mat=document.getElementById('mat-sel').value;
   const qty=parseInt(document.getElementById('qty-inp').value)||1;
   const note=document.getElementById('note-inp').value.trim();
-  const thk=currentThk!==null?currentThk+'mm':'';
+  const thkV=document.getElementById('thk-inp').value;
+  const thk=thkV?thkV+'mm':'';
   const dims=bbox?`${rnd(bbox.w)}×${rnd(bbox.h)}`:'-';
 
   undoStack.push({confirmed:JSON.parse(JSON.stringify(confirmed)),nextNum,
@@ -953,11 +1014,70 @@ document.getElementById('btn-print').addEventListener('click',()=>{
   confirmed.forEach(p=>{
     const tr=document.createElement('tr');
     tr.innerHTML=`<td><span class="bb-p" style="background:${p.color}">${p.balloonNum}</span></td>
-      <td>${esc(a['材質']||'')}</td><td>${esc(p.mat)}</td><td>${esc(p.dims)} mm</td>
+      <td>${esc(MAT_SHAPE[p.mat]||p.mat)}</td><td>${esc(a['材質']||'SS400')}</td>
+      <td>${esc(p.mat)}</td><td>${esc(p.dims)} mm</td>
       <td>${esc(p.thk)}</td><td>${p.qty}</td><td>${esc(p.note)}</td>`;
     tb.appendChild(tr);
   });
   window.print();
+});
+
+// Calculator
+document.getElementById('btn-calc').addEventListener('click',()=>{
+  const p=document.getElementById('calc-panel');
+  p.style.display=p.style.display==='none'?'block':'none';
+});
+const calc={
+  disp:'0',sub:'',prev:null,op:null,fresh:true,
+  _render(){document.getElementById('calc-disp').textContent=this.disp;document.getElementById('calc-sub').textContent=this.sub;},
+  digit(d){
+    if(this.fresh){this.disp=(d==='.')?'0.':d;this.fresh=false;}
+    else if(d==='.'&&this.disp.includes('.'))return;
+    else this.disp+=d;
+    this._render();
+  },
+  op_btn(o){
+    const v=parseFloat(this.disp);
+    if(this.op&&!this.fresh)this.prev=this._compute(this.prev,v,this.op);
+    else this.prev=v;
+    this.op=o;this.fresh=true;
+    this.sub=`${this.prev} ${o}`;this._render();
+  },
+  eq(){
+    if(this.op===null)return;
+    const v=parseFloat(this.disp);
+    const r=this._compute(this.prev,v,this.op);
+    this.sub=`${this.prev} ${this.op} ${v} =`;
+    this.disp=String(Math.round(r*1e10)/1e10);
+    this.prev=r;this.op=null;this.fresh=true;this._render();
+  },
+  _compute(a,b,o){return o==='+'?a+b:o==='-'?a-b:o==='×'?a*b:o==='÷'?b?a/b:0:b;},
+  clear(){this.disp='0';this.sub='';this.prev=null;this.op=null;this.fresh=true;this._render();},
+  pct(){const v=parseFloat(this.disp)/100;this.disp=String(Math.round(v*1e10)/1e10);this.fresh=true;this._render();},
+  back(){if(this.fresh||this.disp.length<=1){this.disp='0';this.fresh=true;}else this.disp=this.disp.slice(0,-1);this._render();},
+};
+document.querySelectorAll('.cb').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const v=btn.dataset.cv;
+    if('0123456789.'.includes(v))calc.digit(v);
+    else if(['+','-','×','÷'].includes(v))calc.op_btn(v);
+    else if(v==='=')calc.eq();
+    else if(v==='C')calc.clear();
+    else if(v==='%')calc.pct();
+    else if(v==='⌫')calc.back();
+  });
+});
+window.addEventListener('keydown',e=>{
+  if(document.getElementById('calc-panel').style.display==='none')return;
+  if(e.key>='0'&&e.key<='9')calc.digit(e.key);
+  else if(e.key==='.')calc.digit('.');
+  else if(e.key==='+')calc.op_btn('+');
+  else if(e.key==='-')calc.op_btn('-');
+  else if(e.key==='*')calc.op_btn('×');
+  else if(e.key==='/')calc.op_btn('÷');
+  else if(e.key==='Enter'||e.key==='=')calc.eq();
+  else if(e.key==='Escape')calc.clear();
+  else if(e.key==='Backspace')calc.back();
 });
 
 // Resizer
