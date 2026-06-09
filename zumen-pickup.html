@@ -72,6 +72,18 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
 .ci-del{background:transparent;border:none;color:var(--accent2);cursor:pointer;font-size:14px;opacity:.6;flex-shrink:0}
 .ci-del:hover{opacity:1}
 #rpane-footer{padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0}
+/* AI key */
+#ai-key-wrap{display:flex;align-items:center;gap:4px;flex-shrink:0}
+#api-key-inp{width:130px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:11px;outline:none;font-family:monospace}
+#api-key-inp::placeholder{color:var(--muted)}
+#api-key-inp:focus{border-color:var(--accent)}
+/* AI suggest */
+#ai-suggest-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+#btn-ai{padding:4px 9px;background:#6a1b9a;color:#fff;border:1px solid #7b1fa2;border-radius:4px;cursor:pointer;font-size:12px;white-space:nowrap;flex-shrink:0}
+#btn-ai:hover{background:#7b1fa2}
+#btn-ai:disabled{opacity:.5;cursor:default}
+#ai-status{font-size:10px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ai-result{font-size:11px;color:#ce93d8;background:rgba(106,27,154,.18);border:1px solid #7b1fa2;border-radius:4px;padding:5px 8px;margin-bottom:8px;display:none;line-height:1.5}
 #rpane-footer button{flex:1;padding:6px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px}
 #rpane-footer button:hover{background:#1a4080}
 /* print */
@@ -109,6 +121,11 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
   <button id="btn-undo" title="Ctrl+Z">↩ Undo</button>
   <button id="btn-save">💾 保存</button>
   <button id="btn-load">📂 再開</button>
+  <div class="sep"></div>
+  <div id="ai-key-wrap">
+    <span style="font-size:10px;color:var(--muted)">AIキー:</span>
+    <input type="password" id="api-key-inp" placeholder="sk-ant-..." maxlength="220" title="Anthropic APIキー">
+  </div>
   <div class="fg"></div>
   <span id="status">DXFを開いてください</span>
 </div>
@@ -139,6 +156,11 @@ html,body{height:100%;overflow:hidden;font-family:'Meiryo','Yu Gothic',sans-seri
             <option>丸棒</option><option>パイプ（丸）</option><option>その他</option>
           </select>
         </div>
+        <div id="ai-suggest-row">
+          <button id="btn-ai">🤖 AI提案</button>
+          <span id="ai-status"></span>
+        </div>
+        <div id="ai-result"></div>
         <div class="form-row"><label>個数</label><input type="number" id="qty-inp" value="1" min="1" max="999"></div>
         <div class="form-row"><label>備考</label><input type="text" id="note-inp" placeholder="曲げ・穴加工など"></div>
         <button id="btn-ok">✓ この部品でOK</button>
@@ -901,6 +923,8 @@ function resetSelPanel(){
   document.getElementById('thk-jis').textContent='';
   document.getElementById('qty-inp').value=1;
   document.getElementById('note-inp').value='';
+  document.getElementById('ai-result').style.display='none';
+  document.getElementById('ai-status').textContent='';
 }
 
 // OK button
@@ -1143,6 +1167,117 @@ window.addEventListener('keydown',e=>{
   else if(e.key==='Enter'||e.key==='=')calc.eq();
   else if(e.key==='Escape')calc.clear();
   else if(e.key==='Backspace')calc.back();
+});
+
+// ===== CLAUDE AI SUGGESTION =====
+function setAiStatus(msg,isErr){
+  const el=document.getElementById('ai-status');
+  el.textContent=msg;
+  el.style.color=isErr?'var(--accent2)':'var(--muted)';
+}
+
+async function askClaude(group,bbox){
+  const key=document.getElementById('api-key-inp').value.trim();
+  if(!key){setAiStatus('APIキーを入力してください',true);return;}
+
+  const btn=document.getElementById('btn-ai');
+  btn.disabled=true;
+  setAiStatus('AI分析中…',false);
+  document.getElementById('ai-result').style.display='none';
+
+  const lines=group.filter(e=>e.type==='LINE').length;
+  const circles=group.filter(e=>e.type==='CIRCLE').length;
+  const arcs=group.filter(e=>e.type==='ARC').length;
+  const polys=group.filter(e=>e.type==='LWPOLYLINE'||e.type==='POLYLINE').length;
+  const w=bbox?Math.round(bbox.w):0;
+  const h=bbox?Math.round(bbox.h):0;
+  const ratio=bbox?Math.max(bbox.w,bbox.h)/(Math.min(bbox.w,bbox.h)||1):1;
+  const curMat=document.getElementById('mat-sel').value;
+
+  const prompt=`あなたは鉄鋼材料の専門家です。DXF図面から抽出した部品情報から、最適な材料種と板厚を提案してください。
+
+部品情報:
+- バウンディングボックス: ${w} × ${h} mm
+- アスペクト比: ${ratio.toFixed(1)}
+- エンティティ: 直線${lines}本, 円${circles}個, 円弧${arcs}個, ポリライン${polys}個
+- ルールベース予測: ${curMat}
+
+材料種の選択肢（いずれか1つ）: 切板, FB（平鋼）, 角パイプ, アングル, チャンネル, H鋼, 丸棒, パイプ（丸）, その他
+板厚: JIS規格数値のみ（例: 6, 9, 12, 16, 19, 22, 25, 32…）
+
+以下のJSON形式だけで答えてください（他の文字は不要）:
+{"mat":"材料種","thk":数値,"reason":"理由30字以内"}`;
+
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':key,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true',
+      },
+      body:JSON.stringify({
+        model:'claude-haiku-4-5',
+        max_tokens:256,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+
+    if(!resp.ok){
+      const err=await resp.json().catch(()=>({}));
+      throw new Error(err.error?.message||`HTTP ${resp.status}`);
+    }
+
+    const data=await resp.json();
+    const text=(data.content&&data.content[0]&&data.content[0].text)||'';
+    const m=text.match(/\{[\s\S]*?\}/);
+    if(!m)throw new Error('レスポンス解析失敗');
+
+    const result=JSON.parse(m[0]);
+
+    // Apply material
+    if(result.mat){
+      const sel=document.getElementById('mat-sel');
+      for(const opt of sel.options){if(opt.value===result.mat){sel.value=result.mat;break;}}
+    }
+    // Apply thickness (JIS snap)
+    if(result.thk!==undefined&&result.thk!==null&&result.thk>0){
+      const jis=snapJIS(Number(result.thk));
+      const inp=document.getElementById('thk-inp');
+      inp.value=jis;
+      inp.style.color='var(--blue)';
+      inp.style.borderBottom='2px solid var(--blue)';
+      document.getElementById('thk-jis').textContent='✓AI';
+      // force sel-info visible in case only dim was selected
+      document.getElementById('sel-none').style.display='none';
+      document.getElementById('sel-info').style.display='block';
+    }
+
+    const resultDiv=document.getElementById('ai-result');
+    resultDiv.textContent=`🤖 ${result.mat||'?'} / t${result.thk||'?'}mm${result.reason?' — '+result.reason:''}`;
+    resultDiv.style.display='block';
+    setAiStatus('提案完了',false);
+  }catch(err){
+    setAiStatus('エラー: '+err.message,true);
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+document.getElementById('btn-ai').addEventListener('click',()=>{
+  if(!dxf){setAiStatus('DXFを開いてください',true);return;}
+  let group,bbox;
+  if(renderer.manualMode&&renderer.manualSel.size){
+    group=dxf.entities.filter(e=>renderer.manualSel.has(e.handle));
+    bbox=groupBBox(group);
+  }else if(selGi>=0){
+    group=groups[selGi];
+    bbox=groupBBox(group);
+  }else{
+    setAiStatus('部品を選択してください',true);return;
+  }
+  askClaude(group,bbox);
 });
 
 // Resizer
