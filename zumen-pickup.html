@@ -1194,16 +1194,35 @@ async function askClaude(group,bbox){
   const ratio=bbox?Math.max(bbox.w,bbox.h)/(Math.min(bbox.w,bbox.h)||1):1;
   const curMat=document.getElementById('mat-sel').value;
 
+  // Collect TEXT/MTEXT/ATTRIB strings from the group for material clues
+  const rawTexts=group
+    .filter(e=>e.type==='TEXT'||e.type==='MTEXT'||e.type==='ATTRIB')
+    .map(e=>(e.text||e.value||'').replace(/[\\{}|;]/g,' ').trim())
+    .filter(t=>t.length>0&&t.length<80);
+  // Also scan all entities in the DXF for title-block / note text mentioning material
+  const allTexts=(dxf?dxf.entities:[])
+    .filter(e=>(e.type==='TEXT'||e.type==='MTEXT'||e.type==='ATTRIB'))
+    .map(e=>(e.text||e.value||'').replace(/[\\{}|;]/g,' ').trim())
+    .filter(t=>{
+      const u=t.toUpperCase();
+      return t.length>0&&t.length<80&&(
+        /SUS|SPCC|SS4|SM4|SK|S45C|SCM|A50|A60|ステン|鉄|材質|材料|thk|t\d/.test(t)||
+        /SUS|SPCC|SS4|SM4|SK|S45C|SCM/.test(u)
+      );
+    });
+  const textHints=[...new Set([...rawTexts,...allTexts])].slice(0,10).join(' / ');
+
   const prompt=`あなたは鉄鋼材料の専門家です。DXF図面から抽出した部品情報から、最適な材料種と板厚を提案してください。
 
 部品情報:
 - バウンディングボックス: ${w} × ${h} mm
 - アスペクト比: ${ratio.toFixed(1)}
 - エンティティ: 直線${lines}本, 円${circles}個, 円弧${arcs}個, ポリライン${polys}個
-- ルールベース予測: ${curMat}
+- ルールベース予測: ${curMat}${textHints?`\n- 図面テキスト: ${textHints}`:''}
 
 材料種の選択肢（いずれか1つ）: 切板, FB（平鋼）, 角パイプ, アングル, チャンネル, H鋼, 丸棒, パイプ（丸）, その他
 板厚: JIS規格数値のみ（例: 6, 9, 12, 16, 19, 22, 25, 32…）
+図面テキストに材質・板厚の明示がある場合は最優先で採用してください。
 
 以下のJSON形式だけで答えてください（他の文字は不要）:
 {"mat":"材料種","thk":数値,"reason":"理由30字以内"}`;
