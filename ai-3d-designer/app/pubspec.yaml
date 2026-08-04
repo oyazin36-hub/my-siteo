@@ -1,0 +1,26 @@
+name: ai_3d_designer
+description: "AI 3D Product Designer — 作りたい物を説明すると Bambu Lab P2S で印刷できるデータになるアプリ"
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  # Color.withValues を使うため Dart 3.6(Flutter 3.27)以上を要求する。
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+
+  # Firebase は Phase 0 の時点では未使用。
+  # Firebase プロジェクト作成後に docs/SETUP.md の手順で有効化する。
+  # firebase_core: ^3.6.0
+  # firebase_auth: ^5.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

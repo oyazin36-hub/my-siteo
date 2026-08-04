@@ -1,0 +1,50 @@
+// Firebase 匿名認証の実装。
+//
+// このファイルは Phase 0 時点では **有効化されていません**(拡張子が .template)。
+// Firebase プロジェクトを作成したあと、docs/SETUP.md の手順に従って有効化してください。
+//
+// 有効化の手順(3ステップ):
+//   1. このファイルを firebase_auth_service.dart にリネームする
+//   2. pubspec.yaml の firebase_core / firebase_auth のコメントを外して flutter pub get
+//   3. lib/main.dart の _buildAuthService で AuthMode.firebase の分岐を
+//      FirebaseAuthService() を返すよう差し替える
+//
+// 前提: `flutterfire configure` を実行して lib/firebase_options.dart が
+// 生成されていること。
+
+import 'package:firebase_auth/firebase_auth.dart';
+
+import 'auth_service.dart';
+
+class FirebaseAuthService implements AuthService {
+  FirebaseAuthService({FirebaseAuth? auth})
+      : _auth = auth ?? FirebaseAuth.instance;
+
+  final FirebaseAuth _auth;
+
+  @override
+  String? get currentUid => _auth.currentUser?.uid;
+
+  @override
+  Future<String> signIn() async {
+    // 匿名認証で始める。アカウント連携(メール/Google)は後のPhaseで
+    // linkWithCredential を使って同じ uid のまま昇格させる。
+    final existing = _auth.currentUser;
+    if (existing != null) return existing.uid;
+
+    final credential = await _auth.signInAnonymously();
+    final user = credential.user;
+    if (user == null) {
+      throw StateError('匿名サインインに成功しましたが user が null です');
+    }
+    return user.uid;
+  }
+
+  @override
+  Future<String?> idToken() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    // ID トークンは1時間で失効するので毎回取得する(SDK が内部でキャッシュ・更新する)。
+    return user.getIdToken();
+  }
+}
