@@ -102,7 +102,7 @@ flowchart LR
 |---|------|---------|------|-------|---------|
 | 1 | LLM(企画・対話) | OpenAI API(指示書指定)。機構ルートのCADコード生成にはClaude API(`claude-opus-5`)の併用を推奨(コード生成精度が高いため) | STEP2企画提案、修正反映、ルート判定、STEP5素材判断、CADコード生成 | 1 | 従量課金 |
 | 2 | 画像生成API | OpenAI画像生成(gpt-image系)または Stable Diffusion系 | STEP3の外観・使用シーン・分解図・寸法イメージ | 1 | 従量課金 |
-| 3 | 3D生成API | Meshy API または Tripo3D API(どちらか選定。両方対応可能な抽象化層を挟む) | STEP4装飾ルート(画像→3Dメッシュ) | 2 | クレジット制 |
+| 3 | 3D生成API | **Tripo3D API(採用決定)** — 抽象化層を挟み他社へ乗り換え可能にする(§2-1) | STEP4装飾ルート(画像→3Dメッシュ) | 2 | 従量課金(クレジット購入制) |
 | 4 | CADエンジン | build123d / OpenSCAD(OSS・無料。APIではなくバックエンド内蔵) | STEP4機構ルート(寸法保証の3Dモデル) | 3 | 無料 |
 | 5 | メッシュ処理 | trimesh + manifold3d(OSS) | メッシュ修復・防水化・印刷可否検証 | 2 | 無料 |
 | 6 | スライサ | Bambu Studio CLI(OSS) | 3MF生成、P2Sプロファイルでのスライス、印刷時間・フィラメント使用量見積 | 3 | 無料 |
@@ -113,9 +113,50 @@ flowchart LR
 
 補足:
 
-- 3D生成APIのキー取得(Meshy/Tripo)はPhase 2開始時に必要。
+- 3D生成API(Tripo3D)のキー取得は**Phase 2開始時に必要**。従量課金のため、3D生成を使わないPhase 0〜1の間は課金が発生しない。
 - フィラメントデータ(Bambu純正の色・素材・耐熱性)はAPIが存在しないため、**アプリ内マスターデータ**として保持し、定期更新する(§4参照)。
 - 具体的な単価は変動するため、Phase 1着手時に最新の各社料金ページで確認して見積もりを出します。
+
+### 2-1. 3D生成プロバイダ抽象化層
+
+Tripo3Dを採用するが、この領域は各社の品質・価格が短期間で動くため、**乗り換えコストを1ファイルに封じ込める**。
+バックエンドの他のどこにもTripo固有のコードを書かない。
+
+```python
+# server/mesh3d/provider.py — 生成プロバイダの共通インターフェース
+
+@dataclass
+class GenerationRequest:
+    image_url: str            # STEP3で承認された画像
+    with_texture: bool = False  # 3Dプリント用途では通常False(安価)
+    target_polycount: int | None = None
+    symmetry: Literal["auto", "on", "off"] = "auto"
+
+@dataclass
+class MeshArtifact:
+    data: bytes
+    format: Literal["glb", "obj", "stl", "3mf"]  # プロバイダにより異なる
+
+class Mesh3DProvider(Protocol):
+    async def submit(self, req: GenerationRequest) -> str: ...        # → job_id
+    async def poll(self, job_id: str) -> Literal["queued", "running", "done", "error"]: ...
+    async def fetch(self, job_id: str) -> MeshArtifact: ...
+
+# 実装は差し替え可能
+#   TripoProvider()  ← 採用
+#   MeshyProvider()  ← 将来の乗り換え候補
+```
+
+**形式の正規化**: プロバイダが返す形式(TripoはGLB/OBJ)はまちまちなので、
+`fetch()` の直後に trimesh で **STLへ正規化**してから後段のメッシュ修復に渡す。
+最終的な3MFはBambu Studio CLIのスライス結果として生成するため、
+**生成APIが3MFに対応している必要はない**(この点でMeshy/Tripoに実質的な差はない)。
+
+```
+Tripo3D → GLB/OBJ → [trimesh] → STL(正規化)
+                              → [trimesh+manifold3d] → 修復・防水化
+                              → [Bambu Studio CLI] → 3MF(P2Sプロファイル)
+```
 
 ---
 
@@ -176,7 +217,7 @@ projects/{projectId}                ← 1作品 = 1プロジェクト
     format: "3mf" | "stl"
     url: "gs://.../model.3mf"
     polycount, watertight: bool, sizeMm
-    genSource: "meshy" | "tripo" | "parametric"
+    genSource: "tripo" | "parametric" | "meshy"   ← tripo=装飾ルート / parametric=機構ルート
     jobId, jobStatus: "queued" | "running" | "done" | "error"
 
   print:                            ← STEP5-6
@@ -223,10 +264,11 @@ idea_input → proposing → proposal_review ⇄ (修正: proposing)
 
 ## 5. リスクと対策(先に共有しておきたいこと)
 
-1. **装飾ルートの品質ばらつき** — 画像→3Dは入力画像に大きく依存。STEP3で「単一オブジェクト・背景なし・斜め視点」に誘導するプロンプトを固定化して吸収する。
-2. **機構ルートはテンプレート数が勝負** — Phase 3では「箱・ケース・名刺入れ系」から始め、以後テンプレートを追加していく拡張構造にする。
-3. **APIコスト** — 1プロジェクトあたり画像数枚+3D生成1〜数回の従量課金が発生。Phase 1完了時に実測して1作品あたりの原価を出し、必要なら生成回数制限を設ける。
-4. **Bambu Studio CLIのバージョン追従** — P2Sプロファイルの更新に合わせ、Dockerイメージを定期更新する運用を決めておく。
+1. **装飾ルートの品質ばらつき** — 画像→3Dは入力画像に大きく依存。STEP3で「単一オブジェクト・背景なし・斜め視点」に誘導するプロンプトを固定化して吸収する。加えてTripo3Dはマルチビュー入力に対応するため、STEP3で**同一オブジェクトの複数アングル画像を生成して渡す**ことで形状の整合性を上げられる。Phase 2で単一画像との品質差を実測し、採否を決める。
+2. **メッシュの防水性(watertight)** — AI生成メッシュは穴が開きがちで、そのままでは印刷不可データになる。`fetch()`後の修復工程(trimesh+manifold3d)を必須パスとし、修復後も非防水なら**ユーザーに再生成を促す**フローを入れる(黙って壊れたデータを渡さない)。Phase 2の主要な品質指標を「修復後の防水率」に置く。
+3. **機構ルートはテンプレート数が勝負** — Phase 3では「箱・ケース・名刺入れ系」から始め、以後テンプレートを追加していく拡張構造にする。
+4. **APIコスト** — 1プロジェクトあたり画像数枚+3D生成1〜数回の従量課金が発生。Tripo3Dは月額固定費がないため下限リスクはないが、**修正ループのたびに再生成が走る**点が効く。Phase 1完了時に実測して1作品あたりの原価を出し、必要なら生成回数制限を設ける。
+5. **Bambu Studio CLIのバージョン追従** — P2Sプロファイルの更新に合わせ、Dockerイメージを定期更新する運用を決めておく。
 
 ---
 
