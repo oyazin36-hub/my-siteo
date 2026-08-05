@@ -30,6 +30,24 @@ class AuthMode(StrEnum):
     ローカル専用モード。``environment`` が local 以外なら起動時に弾く。"""
 
 
+class AIMode(StrEnum):
+    openai = "openai"
+    stub = "stub"
+    """API キーなしで開発するためのスタブ。実際の生成は行わない。"""
+
+
+class RepositoryMode(StrEnum):
+    firestore = "firestore"
+    memory = "memory"
+    """プロセス終了で消える。ローカル開発とテスト用。"""
+
+
+class StorageMode(StrEnum):
+    cloud = "cloud"
+    local = "local"
+    """ローカルのファイルシステムに保存し、/media で配信する。開発用。"""
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -46,6 +64,18 @@ class Settings(BaseSettings):
     """サービスアカウント JSON のパス。未設定なら Application Default Credentials を使う
     (Cloud Run 上ではこちらが通常)。"""
 
+    firebase_storage_bucket: str | None = None
+
+    ai_mode: AIMode = AIMode.openai
+    openai_api_key: str | None = None
+    openai_llm_model: str = "gpt-4o-2024-08-06"
+    openai_image_model: str = "gpt-image-1"
+
+    repository_mode: RepositoryMode = RepositoryMode.firestore
+    storage_mode: StorageMode = StorageMode.cloud
+    local_media_root: str = "./var/media"
+    """storage_mode=local のときの保存先ディレクトリ。"""
+
     cors_origins: list[str] = Field(default_factory=list)
     """JSON 配列で指定する。例: APP_CORS_ORIGINS='["http://localhost:8080"]'"""
 
@@ -58,6 +88,33 @@ class Settings(BaseSettings):
                 f"auth_mode=insecure_dev は environment=local でのみ許可されます "
                 f"(現在: environment={self.environment.value})"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _forbid_stub_ai_outside_local(self) -> Settings:
+        # スタブは実際には何も生成しない。本番で有効になると、生成できたように見えて
+        # 中身が偽物という最悪の壊れ方をするため、起動時に落とす。
+        if self.ai_mode is AIMode.stub and self.environment is not Environment.local:
+            raise ValueError(
+                f"ai_mode=stub は environment=local でのみ許可されます "
+                f"(現在: environment={self.environment.value})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _require_openai_key_when_used(self) -> Settings:
+        if self.ai_mode is AIMode.openai and not self.openai_api_key:
+            raise ValueError(
+                "ai_mode=openai には APP_OPENAI_API_KEY が必要です。"
+                "キーがまだ無い場合は APP_AI_MODE=stub を指定してください"
+                "(environment=local のときのみ)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _require_bucket_for_cloud_storage(self) -> Settings:
+        if self.storage_mode is StorageMode.cloud and not self.firebase_storage_bucket:
+            raise ValueError("storage_mode=cloud には APP_FIREBASE_STORAGE_BUCKET が必要です")
         return self
 
     @property

@@ -33,24 +33,41 @@ ai-3d-designer/
 | Phase | 内容 | 状態 |
 |---|---|---|
 | 0 | 基盤構築(疎通・認証・CI) | **完了** |
-| 1 | STEP1〜3(アイデア入力・AI企画提案・画像生成) | 未着手 |
+| 1 | STEP1〜3(アイデア入力・AI企画提案・画像生成) | **完了** |
 | 2 | STEP4(3Dモデル生成・3Dビューア) | 未着手 |
 | 3 | 3MF 出力・機構ルート(パラメトリック CAD) | 未着手 |
 | 4 | STEP5〜6(フィラメント選定・AMS 配置) | 未着手 |
 
-### Phase 0 で実装した範囲
+### 開発モード — 外部サービス無しで動く
 
-- モノレポ構成(`app/` + `server/`)
-- FastAPI バックエンド
-  - `GET /health` — 認証不要の疎通確認
-  - `GET /me` — 要認証。ログイン確認
-  - Firebase ID トークン検証(差し替え可能な `TokenVerifier` として実装)
-  - 開発用の `insecure_dev` 認証モード。**local 以外では起動を拒否する安全装置つき**
-- Flutter アプリ骨格 — 起動時に疎通とログインを自動確認して結果を表示
-- GitHub Actions CI — サーバーの lint / test、アプリの analyze / test
+Firebase も OpenAI キーも無い状態で、STEP1〜3 の流れを最後まで通せます。
+各外部依存に開発用の実装を用意してあるためです。
 
-### Phase 0 に含まれないもの
+| 依存 | 本番 | 開発 |
+|---|---|---|
+| 認証 | Firebase ID トークン | `insecure_dev` — トークンを uid として扱う |
+| LLM / 画像生成 | OpenAI | `stub` — 固定の企画と単色画像を返す |
+| 永続化 | Firestore | `memory` — プロセス内 |
+| 画像保存 | Cloud Storage | `local` — ファイルに保存し `/media` で配信 |
+
+**`insecure_dev` と `stub` は `APP_ENVIRONMENT=local` 以外では起動時にエラーになります。**
+実行時ではなく設定読み込みの時点で落ちるので、本番に紛れ込むことはありません。
+
+### Phase 1 で実装した範囲
+
+- **STEP1** `POST /projects` — アイデア(文章 + 画像 URL)を登録
+- **STEP2** `POST /projects/{id}/proposal` — 企画を生成
+  - 装飾ルート / 機構ルートの自動判定(DESIGN.md §0 の 2 ルート方式)
+  - `POST /projects/{id}/proposal/revise` — 修正指示を反映。履歴は企画が差し替わっても残る
+- **STEP3** `POST /projects/{id}/images` — 外観・使用シーン・分解図・内部構造・寸法の5枚を生成
+  - `POST /projects/{id}/images/revise` — 修正指示を反映して作り直す
+  - 3D化を見据え「単一オブジェクト・背景なし」をプロンプトで固定
+  - 生成 API が返す期限付き URL は使わず、必ず自前で保存してから配信する
+- 所有者以外には **404 を返す**(403 だと存在が漏れるため)
+- Flutter 画面1〜4(ホーム / アイデア入力 / 企画確認 / 画像確認)
+
+### Phase 1 に含まれないもの
 
 - Firebase プロジェクトの作成(ユーザー側の作業。手順は `SETUP.md`)
-- Firestore / Storage への読み書き(Phase 1)
-- 外部 AI API の呼び出し(Phase 1 以降)
+- 3Dモデルの生成(Phase 2)
+- 画像の添付アップロード — 現状は URL 指定のみ受け付ける

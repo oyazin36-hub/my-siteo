@@ -34,6 +34,48 @@ curl -H "Authorization: Bearer dev-user-1" http://127.0.0.1:8000/me
 
 API ドキュメントは http://127.0.0.1:8000/docs で見られます。
 
+### STEP1〜3 を curl で通す
+
+アプリを起動しなくても、コマンドラインだけで流れを確認できます。
+
+```bash
+API=http://127.0.0.1:8000
+H="Authorization: Bearer dev-user-1"
+
+# STEP1: アイデア入力
+PID=$(curl -s -X POST $API/projects -H "$H" -H "Content-Type: application/json" \
+  -d '{"text":"名刺入れをつくって。ボタンで取り出せて、30枚入って、ポケットに入るサイズ"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+# STEP2: 企画生成 → 修正
+curl -s -X POST $API/projects/$PID/proposal -H "$H" | python3 -m json.tool
+curl -s -X POST $API/projects/$PID/proposal/revise -H "$H" \
+  -H "Content-Type: application/json" -d '{"request":"もう少し薄くして"}' | python3 -m json.tool
+
+# STEP3: 画像生成
+curl -s -X POST $API/projects/$PID/images -H "$H" | python3 -m json.tool
+```
+
+> `APP_AI_MODE=stub` のままなら、企画は固定文面・画像は単色 PNG が返ります。
+> 実際の生成を試すには次節の OpenAI 設定が必要です。
+
+---
+
+## 1-2. 実際に AI を使う(任意)
+
+OpenAI の API キーを用意して `.env` を書き換えます。
+
+```bash
+APP_AI_MODE=openai
+APP_OPENAI_API_KEY=sk-...
+```
+
+キーが未設定のまま `APP_AI_MODE=openai` にすると、**起動時にその旨のエラーで落ちます**
+(実行してから失敗するのではなく、設定の時点で気付けるようにしてあります)。
+
+課金は従量制です。1プロジェクトあたり企画生成1回 + 画像5枚が目安なので、
+試行錯誤の回数がそのままコストになります。
+
 テストと lint:
 
 ```bash
