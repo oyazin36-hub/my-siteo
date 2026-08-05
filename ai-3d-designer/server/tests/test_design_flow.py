@@ -217,6 +217,10 @@ class TestRouteClassification:
             ("名刺入れをつくって。30枚入るサイズで", "mechanism"),
             ("スマホスタンドをつくって", "mechanism"),
             ("猫の置物をつくって", "decorative"),
+            # 寸法の語を含んでいても、見た目が主目的なら装飾ルートに倒す。
+            ("猫の置物をつくって。手のひらサイズで", "decorative"),
+            # 「画像」に含まれる「像」を装飾の合図と誤読しないこと。
+            ("名刺入れをつくって。添付画像を参考に。30枚入る", "mechanism"),
         ],
     )
     def test_classifies_the_generation_route(

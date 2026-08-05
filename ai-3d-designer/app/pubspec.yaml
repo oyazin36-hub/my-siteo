@@ -11,6 +11,10 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
+  http_parser: ^4.0.2
+
+  # 3Dビューア。STL は扱えないので、サーバーが併せて書き出す GLB を読む。
+  model_viewer_plus: ^1.7.0
 
   # Firebase は Phase 0 の時点では未使用。
   # Firebase プロジェクト作成後に docs/SETUP.md の手順で有効化する。

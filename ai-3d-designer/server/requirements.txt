@@ -2,6 +2,18 @@ fastapi>=0.115,<1.0
 uvicorn[standard]>=0.32,<1.0
 pydantic>=2.9,<3.0
 pydantic-settings>=2.6,<3.0
+python-multipart>=0.0.9
+
+# 認証・永続化・保存
 firebase-admin>=6.6,<7.0
 google-cloud-firestore>=2.19,<3.0
+
+# STEP2/3: 企画生成・画像生成
 openai>=1.54,<2.0
+
+# STEP4: 3Dモデル生成とメッシュ処理
+tripo3d>=0.4,<1.0
+trimesh>=4.5
+numpy>=1.26
+networkx>=3.0        # trimesh の穴埋め (fill_holes) に必要
+httpx>=0.27,<1.0     # 生成された3Dモデルのダウンロード

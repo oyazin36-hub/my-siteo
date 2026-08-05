@@ -151,6 +151,98 @@ class GeneratedImage {
       );
 }
 
+enum JobStatus {
+  queued('queued', '順番待ち'),
+  running('running', '生成中'),
+  done('done', '完了'),
+  error('error', '失敗');
+
+  const JobStatus(this.wire, this.label);
+
+  final String wire;
+  final String label;
+
+  bool get inProgress => this == queued || this == running;
+
+  static JobStatus parse(String raw) => values.firstWhere(
+        (status) => status.wire == raw,
+        orElse: () => throw ArgumentError('未知の job_status: $raw'),
+      );
+}
+
+enum DimensionalAccuracy {
+  approximate('approximate', '寸法は目安'),
+  guaranteed('guaranteed', '寸法保証あり');
+
+  const DimensionalAccuracy(this.wire, this.label);
+
+  final String wire;
+  final String label;
+
+  static DimensionalAccuracy parse(String raw) => values.firstWhere(
+        (value) => value.wire == raw,
+        orElse: () => throw ArgumentError('未知の dimensional_accuracy: $raw'),
+      );
+}
+
+class Model3D {
+  const Model3D({
+    required this.jobStatus,
+    this.error,
+    this.url,
+    this.previewUrl,
+    required this.watertight,
+    required this.printable,
+    required this.faceCount,
+    this.sizeMm,
+    required this.volumeMm3,
+    required this.dimensionalAccuracy,
+    required this.repairActions,
+    required this.warnings,
+    required this.revisions,
+  });
+
+  final JobStatus jobStatus;
+  final String? error;
+
+  /// 印刷用 STL。スライサに渡すのはこちら。
+  final String? url;
+
+  /// 表示用 GLB。3Dビューアが読むのはこちら。
+  final String? previewUrl;
+
+  final bool watertight;
+  final bool printable;
+  final int faceCount;
+  final Dimensions? sizeMm;
+  final double volumeMm3;
+  final DimensionalAccuracy dimensionalAccuracy;
+  final List<String> repairActions;
+  final List<String> warnings;
+  final List<Revision> revisions;
+
+  factory Model3D.fromJson(Map<String, dynamic> json) => Model3D(
+        jobStatus: JobStatus.parse(json['job_status'] as String),
+        error: json['error'] as String?,
+        url: json['url'] as String?,
+        previewUrl: json['preview_url'] as String?,
+        watertight: json['watertight'] as bool,
+        printable: json['printable'] as bool,
+        faceCount: json['face_count'] as int,
+        sizeMm: json['size_mm'] == null
+            ? null
+            : Dimensions.fromJson(json['size_mm'] as Map<String, dynamic>),
+        volumeMm3: (json['volume_mm3'] as num).toDouble(),
+        dimensionalAccuracy:
+            DimensionalAccuracy.parse(json['dimensional_accuracy'] as String),
+        repairActions: (json['repair_actions'] as List<dynamic>).cast<String>(),
+        warnings: (json['warnings'] as List<dynamic>).cast<String>(),
+        revisions: (json['revisions'] as List<dynamic>)
+            .map((e) => Revision.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
 class Project {
   const Project({
     required this.id,
@@ -161,6 +253,7 @@ class Project {
     this.proposal,
     required this.images,
     required this.imageRevisions,
+    this.model,
     required this.updatedAt,
   });
 
@@ -172,6 +265,7 @@ class Project {
   final Proposal? proposal;
   final List<GeneratedImage> images;
   final List<Revision> imageRevisions;
+  final Model3D? model;
   final DateTime updatedAt;
 
   factory Project.fromJson(Map<String, dynamic> json) => Project(
@@ -189,6 +283,9 @@ class Project {
         imageRevisions: (json['image_revisions'] as List<dynamic>)
             .map((e) => Revision.fromJson(e as Map<String, dynamic>))
             .toList(),
+        model: json['model'] == null
+            ? null
+            : Model3D.fromJson(json['model'] as Map<String, dynamic>),
         updatedAt: DateTime.parse(json['updated_at'] as String),
       );
 }

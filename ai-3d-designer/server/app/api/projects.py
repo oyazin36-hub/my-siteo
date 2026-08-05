@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
-from app.core.deps import get_design_service
+from app.core.deps import get_design_service, get_modeling_service
 from app.domain.models import Idea, Project
 from app.providers.imagegen import ImageGenerationError
 from app.providers.llm import LLMError
 from app.repositories.base import ProjectNotFoundError
 from app.services.design import DesignService, InvalidStateError
+from app.services.modeling import ModelingService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -132,3 +141,99 @@ async def revise_images(
         return await service.revise_images(project, body.request)
     except (InvalidStateError, ImageGenerationError) as exc:
         raise _to_http(exc) from exc
+
+
+# --- STEP4: 3Dモデル ---
+
+
+@router.post(
+    "/{project_id}/model",
+    response_model=Project,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def generate_model(
+    project_id: str,
+    background: BackgroundTasks,
+    user: AuthenticatedUser = Depends(get_current_user),
+    service: DesignService = Depends(get_design_service),
+    modeling: ModelingService = Depends(get_modeling_service),
+) -> Project:
+    """STEP4: 画像を承認して3Dモデルの生成を開始する.
+
+    生成には数分かかるため受け付けだけ行い 202 を返す。
+    進行状況はプロジェクトを取得して model.job_status を見る。
+    """
+    project = await _load_owned(service, project_id, user)
+    try:
+        queued = await modeling.enqueue(project)
+    except InvalidStateError as exc:
+        raise _to_http(exc) from exc
+
+    background.add_task(modeling.run, project_id)
+    return queued
+
+
+@router.post(
+    "/{project_id}/model/revise",
+    response_model=Project,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def revise_model(
+    project_id: str,
+    body: RevisionRequest,
+    background: BackgroundTasks,
+    user: AuthenticatedUser = Depends(get_current_user),
+    service: DesignService = Depends(get_design_service),
+    modeling: ModelingService = Depends(get_modeling_service),
+) -> Project:
+    """STEP4: 3Dモデルを作り直す."""
+    project = await _load_owned(service, project_id, user)
+    try:
+        queued = await modeling.enqueue(project, revision_request=body.request)
+    except InvalidStateError as exc:
+        raise _to_http(exc) from exc
+
+    background.add_task(modeling.run, project_id)
+    return queued
+
+
+# --- 添付画像のアップロード ---
+
+#: 受け付ける画像形式と 1 枚あたりの上限。
+_ALLOWED_UPLOAD_TYPES = {"image/png", "image/jpeg"}
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+class UploadedImage(BaseModel):
+    url: str
+
+
+@router.post("/uploads", response_model=UploadedImage, status_code=status.HTTP_201_CREATED)
+async def upload_image(
+    file: UploadFile = File(...),
+    user: AuthenticatedUser = Depends(get_current_user),
+    service: DesignService = Depends(get_design_service),
+) -> UploadedImage:
+    """参考画像をアップロードして URL を得る.
+
+    ここで得た URL を POST /projects の image_urls に渡す。
+    """
+    if file.content_type not in _ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            f"対応していない形式です: {file.content_type or '不明'}"
+            "(PNG か JPEG を指定してください)",
+        )
+
+    data = await file.read()
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"画像が大きすぎます({len(data) // 1024 // 1024}MB)。10MB 以下にしてください",
+        )
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "空のファイルです")
+
+    # プロジェクト作成前なのでユーザー単位の領域に置く。
+    url = await service.store_upload(owner_uid=user.uid, data=data, media_type=file.content_type)
+    return UploadedImage(url=url)

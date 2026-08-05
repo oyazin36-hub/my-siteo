@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 
 import '../models/project.dart';
 import 'auth_service.dart';
@@ -105,6 +106,51 @@ class ApiClient {
   /// STEP3: 修正指示を反映して画像を作り直す。
   Future<Project> reviseImages(String id, String request) =>
       _project('POST', '/projects/$id/images/revise', body: {'request': request});
+
+  /// STEP4: 3Dモデルの生成を開始する。完了は待たないので getProject で追う。
+  Future<Project> generateModel(String id) =>
+      _project('POST', '/projects/$id/model');
+
+  /// STEP4: 修正指示を反映して3Dモデルを作り直す。
+  Future<Project> reviseModel(String id, String request) =>
+      _project('POST', '/projects/$id/model/revise', body: {'request': request});
+
+  /// 参考画像をアップロードして、アイデアに添付できる URL を得る。
+  Future<String> uploadImage({
+    required List<int> bytes,
+    required String filename,
+    required String mediaType,
+  }) async {
+    final token = await _auth.idToken();
+    if (token == null) throw ApiException('サインインしていません');
+
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/projects/uploads'),
+    )
+      ..headers['Authorization'] = 'Bearer $token'
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: filename,
+          contentType: MediaType.parse(mediaType),
+        ),
+      );
+
+    final http.Response response;
+    try {
+      response = await http.Response.fromStream(await _http.send(request));
+    } catch (error) {
+      throw ApiException('画像をアップロードできません: $error');
+    }
+
+    if (response.statusCode != 201) {
+      throw ApiException(_describeError(response));
+    }
+    return (jsonDecode(utf8.decode(response.bodyBytes))
+        as Map<String, dynamic>)['url'] as String;
+  }
 
   Future<Project> _project(
     String method,

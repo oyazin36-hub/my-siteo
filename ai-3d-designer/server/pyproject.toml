@@ -8,7 +8,14 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI の依存性注入は引数デフォルトで Depends() を呼ぶのが正規の書き方なので、
 # B008(可変なデフォルト引数の検出)の対象から外す。
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body"]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.File",
+    "fastapi.Form",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

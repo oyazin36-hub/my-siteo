@@ -36,6 +36,12 @@ class AIMode(StrEnum):
     """API キーなしで開発するためのスタブ。実際の生成は行わない。"""
 
 
+class Mesh3DMode(StrEnum):
+    tripo = "tripo"
+    stub = "stub"
+    """企画の寸法どおりの箱を返すスタブ。実際の形状生成は行わない。"""
+
+
 class RepositoryMode(StrEnum):
     firestore = "firestore"
     memory = "memory"
@@ -71,6 +77,11 @@ class Settings(BaseSettings):
     openai_llm_model: str = "gpt-4o-2024-08-06"
     openai_image_model: str = "gpt-image-1"
 
+    mesh3d_mode: Mesh3DMode = Mesh3DMode.tripo
+    tripo_api_key: str | None = None
+    tripo_model_version: str | None = None
+    """未指定なら SDK の既定版を使う。"""
+
     repository_mode: RepositoryMode = RepositoryMode.firestore
     storage_mode: StorageMode = StorageMode.cloud
     local_media_root: str = "./var/media"
@@ -98,6 +109,25 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"ai_mode=stub は environment=local でのみ許可されます "
                 f"(現在: environment={self.environment.value})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _forbid_stub_mesh_outside_local(self) -> Settings:
+        if self.mesh3d_mode is Mesh3DMode.stub and self.environment is not Environment.local:
+            raise ValueError(
+                f"mesh3d_mode=stub は environment=local でのみ許可されます "
+                f"(現在: environment={self.environment.value})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _require_tripo_key_when_used(self) -> Settings:
+        if self.mesh3d_mode is Mesh3DMode.tripo and not self.tripo_api_key:
+            raise ValueError(
+                "mesh3d_mode=tripo には APP_TRIPO_API_KEY が必要です。"
+                "キーがまだ無い場合は APP_MESH3D_MODE=stub を指定してください"
+                "(environment=local のときのみ)"
             )
         return self
 

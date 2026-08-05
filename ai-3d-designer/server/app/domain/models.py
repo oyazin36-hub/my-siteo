@@ -104,6 +104,54 @@ class GeneratedImage(BaseModel):
     created_at: datetime = Field(default_factory=_now)
 
 
+class JobStatus(StrEnum):
+    """時間のかかる生成処理の進行状況."""
+
+    queued = "queued"
+    running = "running"
+    done = "done"
+    error = "error"
+
+
+class DimensionalAccuracy(StrEnum):
+    approximate = "approximate"
+    """画像から起こしたモデル。形は似ているが実寸は保証されない。"""
+
+    guaranteed = "guaranteed"
+    """パラメトリック CAD で生成。寸法が mm 単位で保証される(Phase 3)。"""
+
+
+class Model3D(BaseModel):
+    """STEP4: 生成された 3D モデルと、その印刷可否の診断."""
+
+    job_id: str | None = None
+    job_status: JobStatus = JobStatus.queued
+    error: str | None = None
+
+    url: str | None = None
+    """印刷用 STL。スライサに渡すのはこちら。"""
+
+    preview_url: str | None = None
+    """表示用 GLB。3Dビューアが STL を扱えないため別に持つ。"""
+
+    format: str = "stl"
+    gen_source: str | None = None
+    """どの経路で作られたか。tripo / parametric / stub。"""
+
+    dimensional_accuracy: DimensionalAccuracy = DimensionalAccuracy.approximate
+
+    watertight: bool = False
+    """防水(閉じた立体)か。False のまま印刷すると破綻する。"""
+
+    printable: bool = False
+    face_count: int = 0
+    size_mm: Dimensions | None = None
+    volume_mm3: float = 0.0
+    repair_actions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    revisions: list[Revision] = Field(default_factory=list)
+
+
 class Project(BaseModel):
     """1 作品 = 1 プロジェクト."""
 
@@ -116,6 +164,7 @@ class Project(BaseModel):
     proposal: Proposal | None = None
     images: list[GeneratedImage] = Field(default_factory=list)
     image_revisions: list[Revision] = Field(default_factory=list)
+    model: Model3D | None = None
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 

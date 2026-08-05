@@ -19,7 +19,7 @@ from app.domain.models import (
 from app.providers.imagegen import ImageProvider
 from app.providers.llm import LLMProvider, ProposalDraft
 from app.providers.prompts import build_image_prompt, build_image_revision_prompt
-from app.providers.storage import ImageStorage
+from app.providers.storage import BlobStorage
 from app.repositories.base import ProjectRepository
 
 #: STEP3 で生成する画像の種類と順序。
@@ -48,7 +48,7 @@ class DesignService:
         repository: ProjectRepository,
         llm: LLMProvider,
         image_provider: ImageProvider,
-        storage: ImageStorage,
+        storage: BlobStorage,
     ) -> None:
         self._repo = repository
         self._llm = llm
@@ -63,6 +63,16 @@ class DesignService:
 
     async def list_for_owner(self, owner_uid: str) -> list[Project]:
         return await self._repo.list_for_owner(owner_uid)
+
+    async def store_upload(self, *, owner_uid: str, data: bytes, media_type: str) -> str:
+        """ユーザーがアップロードした参考画像を保存して URL を返す.
+
+        プロジェクト作成前に呼ばれるため、プロジェクト単位ではなく
+        ユーザー単位の領域に置く。
+        """
+        return await self._storage.put(
+            project_id=f"uploads/{owner_uid}", data=data, media_type=media_type
+        )
 
     # --- STEP1 ---
 

@@ -203,9 +203,26 @@ _MECHANICAL_HINTS = (
     "ボタン",
     "mm",
     "枚",
-    "サイズ",
+)
+
+#: 見た目が主目的であることを示す語。機構の語より優先する。
+#: 「猫の置物を手のひらサイズで」のように寸法の語を含んでいても装飾ルートに倒すため。
+#: 部分一致で判定するので、他の語に埋もれる短い語は入れない
+#: (例:「像」は「画像」に一致してしまう)。
+_DECORATIVE_HINTS = (
+    "置物",
+    "フィギュア",
+    "人形",
+    "オブジェ",
+    "飾り",
+    "装飾",
+    "模型",
+    "銅像",
+    "彫像",
 )
 
 
 def _looks_mechanical(text: str) -> bool:
+    if any(hint in text for hint in _DECORATIVE_HINTS):
+        return False
     return any(hint in text for hint in _MECHANICAL_HINTS)

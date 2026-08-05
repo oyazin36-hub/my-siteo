@@ -4,6 +4,7 @@ import '../app_scope.dart';
 import '../models/project.dart';
 import '../services/api_client.dart';
 import '../widgets/revision_sheet.dart';
+import 'model_screen.dart';
 
 /// 画面4: 画像確認 (STEP3)。OK なら次は3Dモデル生成 (Phase 2)。
 class ImagesScreen extends StatefulWidget {
@@ -138,12 +139,17 @@ class _ImagesScreenState extends State<ImagesScreen> {
                     )
                   else ...[
                     FilledButton.icon(
-                      // Phase 2 で3Dモデル生成に繋ぐ。今は未実装であることを明示する。
-                      onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('3Dモデル生成は Phase 2 で実装します'),
-                        ),
-                      ),
+                      onPressed: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ModelScreen(
+                              projectId: widget.projectId,
+                              autoGenerate: true,
+                            ),
+                          ),
+                        );
+                        if (mounted) await _load();
+                      },
                       icon: const Icon(Icons.view_in_ar),
                       label: const Text('この画像でOK — 3Dモデルへ'),
                     ),

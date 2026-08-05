@@ -32,6 +32,24 @@ const _projectJson = '''
     }
   ],
   "image_revisions": [],
+  "model": {
+    "job_id": "stub-job-1",
+    "job_status": "done",
+    "error": null,
+    "url": "/media/abc123/m.stl",
+    "preview_url": "/media/abc123/m.glb",
+    "format": "stl",
+    "gen_source": "tripo",
+    "dimensional_accuracy": "approximate",
+    "watertight": true,
+    "printable": true,
+    "face_count": 12,
+    "size_mm": {"width": 96.0, "depth": 72.0, "height": 48.0},
+    "volume_mm3": 331776.0,
+    "repair_actions": ["穴を塞いだ"],
+    "warnings": ["実寸が企画値と食い違っています"],
+    "revisions": []
+  },
   "created_at": "2026-08-05T11:00:00Z",
   "updated_at": "2026-08-05T12:00:00Z"
 }
@@ -59,6 +77,28 @@ void main() {
       expect(proposal.revisions.single.request, 'もう少し薄くして');
     });
 
+    test('3Dモデルを解釈できる', () {
+      final model = project.model!;
+      expect(model.jobStatus, JobStatus.done);
+      expect(model.jobStatus.inProgress, isFalse);
+      expect(model.printable, isTrue);
+      expect(model.watertight, isTrue);
+      // 印刷用 STL と表示用 GLB は別物であること。
+      expect(model.url, endsWith('.stl'));
+      expect(model.previewUrl, endsWith('.glb'));
+      expect(model.dimensionalAccuracy, DimensionalAccuracy.approximate);
+      expect(model.warnings, hasLength(1));
+    });
+
+    test('生成中は進行中と判定される', () {
+      for (final status in [JobStatus.queued, JobStatus.running]) {
+        expect(status.inProgress, isTrue, reason: status.wire);
+      }
+      for (final status in [JobStatus.done, JobStatus.error]) {
+        expect(status.inProgress, isFalse, reason: status.wire);
+      }
+    });
+
     test('画像を解釈できる', () {
       expect(project.images.single.kind, ImageKind.exterior);
       expect(project.images.single.url, '/media/abc123/x.png');
@@ -69,10 +109,12 @@ void main() {
       raw['proposal'] = null;
       raw['route'] = null;
       raw['status'] = 'idea_input';
+      raw['model'] = null;
 
       final fresh = Project.fromJson(raw);
       expect(fresh.proposal, isNull);
       expect(fresh.route, isNull);
+      expect(fresh.model, isNull);
       expect(fresh.status, ProjectStatus.ideaInput);
     });
   });

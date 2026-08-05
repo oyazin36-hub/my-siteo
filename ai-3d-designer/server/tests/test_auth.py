@@ -9,7 +9,15 @@ from app.core.auth import (
     InvalidTokenError,
     build_token_verifier,
 )
-from app.core.config import AIMode, AuthMode, Environment, RepositoryMode, Settings, StorageMode
+from app.core.config import (
+    AIMode,
+    AuthMode,
+    Environment,
+    Mesh3DMode,
+    RepositoryMode,
+    Settings,
+    StorageMode,
+)
 
 
 def _settings(**overrides: object) -> Settings:
@@ -17,11 +25,13 @@ def _settings(**overrides: object) -> Settings:
 
     こうしないと、別のバリデータが先に落ちてテストが通ってしまい、
     本来検証したいガードが壊れても気付けなくなる。
+    設定を増やしたらここにも既定値を足すこと。
     """
     base: dict[str, object] = {
         "environment": Environment.local,
         "auth_mode": AuthMode.firebase,
         "ai_mode": AIMode.stub,
+        "mesh3d_mode": Mesh3DMode.stub,
         "repository_mode": RepositoryMode.memory,
         "storage_mode": StorageMode.local,
     }
@@ -81,3 +91,20 @@ def test_openai_mode_requires_an_api_key() -> None:
 def test_cloud_storage_requires_a_bucket() -> None:
     with pytest.raises(ValidationError, match="STORAGE_BUCKET"):
         _settings(storage_mode=StorageMode.cloud, firebase_storage_bucket=None)
+
+
+@pytest.mark.parametrize("environment", [Environment.staging, Environment.production])
+def test_stub_mesh_cannot_be_used_outside_local(environment: Environment) -> None:
+    # ai_mode 側のガードが先に落ちないよう、そちらは妥当な構成にしておく。
+    with pytest.raises(ValidationError, match="mesh3d_mode=stub"):
+        _settings(
+            environment=environment,
+            mesh3d_mode=Mesh3DMode.stub,
+            ai_mode=AIMode.openai,
+            openai_api_key="dummy",
+        )
+
+
+def test_tripo_mode_requires_an_api_key() -> None:
+    with pytest.raises(ValidationError, match="TRIPO_API_KEY"):
+        _settings(mesh3d_mode=Mesh3DMode.tripo, tripo_api_key=None)
