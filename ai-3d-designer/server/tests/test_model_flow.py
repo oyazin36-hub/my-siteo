@@ -85,25 +85,35 @@ class TestStep4:
         assert response.status_code == 404
 
 
-class TestMechanismRouteIsFlagged:
-    def test_warns_that_dimensions_are_not_guaranteed(self, client: TestClient) -> None:
-        # 名刺入れは機構ルート。Phase 2 の画像経路では寸法を保証できないので、
-        # 「暫定である」ことを必ず伝える。黙って寸法違いの物を渡さない。
+class TestRoutesDifferInGuarantee:
+    """装飾ルートと機構ルートで寸法の扱いが違うことを保証する.
+
+    Phase 3 で機構ルートは CAD 経路に変わり、寸法保証がつくようになった。
+    装飾ルートは従来どおり画像経路で、寸法は保証しない。
+    """
+
+    def test_mechanism_route_guarantees_dimensions(self, client: TestClient) -> None:
         project = _through_images(client, MEISHI)
         assert project["route"] == "mechanism"
 
         client.post(f"/projects/{project['id']}/model", headers=AUTH)
         model = client.get(f"/projects/{project['id']}", headers=AUTH).json()["model"]
 
-        assert any("暫定形状" in w for w in model["warnings"])
-        assert model["dimensional_accuracy"] == "approximate"
+        assert model["dimensional_accuracy"] == "guaranteed"
+        assert model["gen_source"] == "parametric"
+        # 寸法が合っているので、食い違いも暫定の断りも出ない。
+        assert not any("食い違" in w for w in model["warnings"])
+        assert not any("暫定形状" in w for w in model["warnings"])
 
-    def test_reports_the_size_mismatch(self, client: TestClient) -> None:
-        project = _through_images(client, MEISHI)
+    def test_decorative_route_does_not_guarantee_dimensions(self, client: TestClient) -> None:
+        project = _through_images(client, NEKO)
+        assert project["route"] == "decorative"
+
         client.post(f"/projects/{project['id']}/model", headers=AUTH)
-
         model = client.get(f"/projects/{project['id']}", headers=AUTH).json()["model"]
-        assert any("実寸が企画値と食い違っています" in w for w in model["warnings"])
+
+        assert model["dimensional_accuracy"] == "approximate"
+        assert model["gen_source"] == "stub"  # 画像経路(Tripo の代わり)
 
 
 class TestRevision:

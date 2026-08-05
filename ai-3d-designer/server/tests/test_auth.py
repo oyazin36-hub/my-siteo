@@ -12,6 +12,7 @@ from app.core.auth import (
 from app.core.config import (
     AIMode,
     AuthMode,
+    CadMode,
     Environment,
     Mesh3DMode,
     RepositoryMode,
@@ -32,6 +33,7 @@ def _settings(**overrides: object) -> Settings:
         "auth_mode": AuthMode.firebase,
         "ai_mode": AIMode.stub,
         "mesh3d_mode": Mesh3DMode.stub,
+        "cad_mode": CadMode.stub,
         "repository_mode": RepositoryMode.memory,
         "storage_mode": StorageMode.local,
     }
@@ -108,3 +110,21 @@ def test_stub_mesh_cannot_be_used_outside_local(environment: Environment) -> Non
 def test_tripo_mode_requires_an_api_key() -> None:
     with pytest.raises(ValidationError, match="TRIPO_API_KEY"):
         _settings(mesh3d_mode=Mesh3DMode.tripo, tripo_api_key=None)
+
+
+@pytest.mark.parametrize("environment", [Environment.staging, Environment.production])
+def test_stub_cad_cannot_be_used_outside_local(environment: Environment) -> None:
+    with pytest.raises(ValidationError, match="cad_mode=stub"):
+        _settings(
+            environment=environment,
+            cad_mode=CadMode.stub,
+            ai_mode=AIMode.openai,
+            openai_api_key="dummy",
+            mesh3d_mode=Mesh3DMode.tripo,
+            tripo_api_key="dummy",
+        )
+
+
+def test_claude_cad_mode_requires_an_api_key() -> None:
+    with pytest.raises(ValidationError, match="ANTHROPIC_API_KEY"):
+        _settings(cad_mode=CadMode.claude, anthropic_api_key=None)

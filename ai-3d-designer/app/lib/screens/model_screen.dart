@@ -7,6 +7,7 @@ import '../app_scope.dart';
 import '../models/project.dart';
 import '../services/api_client.dart';
 import '../widgets/revision_sheet.dart';
+import 'print_screen.dart';
 
 /// 画面5: 3Dモデル確認 (STEP4)。
 ///
@@ -181,14 +182,24 @@ class _ModelScreenState extends State<ModelScreen> {
                       const SizedBox(height: 4),
                       _RepairLog(actions: model.repairActions),
                     ],
+                    if (model.sourceCode != null) ...[
+                      const SizedBox(height: 8),
+                      _SourceCode(code: model.sourceCode!, attempts: model.attempts),
+                    ],
                     const SizedBox(height: 24),
                     FilledButton.icon(
                       onPressed: model.printable
-                          ? () => ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('印刷データ(3MF)の生成は Phase 3 で実装します'),
+                          ? () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => PrintScreen(
+                                    projectId: widget.projectId,
+                                    autoBuild: true,
+                                  ),
                                 ),
-                              )
+                              );
+                              if (mounted) await _refresh();
+                            }
                           : null,
                       icon: const Icon(Icons.print),
                       label: const Text('このモデルでOK — 印刷データへ'),
@@ -359,6 +370,37 @@ class _RepairLog extends StatelessWidget {
             for (final action in actions) Text('・$action'),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SourceCode extends StatelessWidget {
+  const _SourceCode({required this.code, required this.attempts});
+
+  final String code;
+  final int attempts;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ExpansionTile(
+        title: const Text('設計コード (OpenSCAD)'),
+        subtitle: Text(
+          attempts > 1
+              ? '寸法が合うまで $attempts 回作り直しました'
+              : '1回で寸法が一致しました',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SelectableText(
+              code,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+        ],
       ),
     );
   }

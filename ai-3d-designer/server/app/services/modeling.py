@@ -3,9 +3,14 @@
 3D 生成は数十秒〜数分かかるため非同期で走らせる。クライアントは
 プロジェクトを取得して ``model.job_status`` を見る。
 
-Phase 2 では装飾ルート(画像 → 3D生成API)のみを実装している。
-機構ルートのプロジェクトもこの経路で暫定のモデルを作るが、
-``dimensional_accuracy`` は approximate のままで、寸法保証は Phase 3 で行う。
+ルートによって経路が分かれる:
+
+- 装飾ルート: 画像 → 3D生成API → メッシュ修復。寸法は保証しない (approximate)
+- 機構ルート: 企画 → CADコード生成 → レンダリング → 寸法検証。
+  検証を通ったものだけ guaranteed になる
+
+機構ルートで CAD が使えない構成のときは装飾ルートの経路に落とすが、
+その場合は「暫定形状」であることを必ず警告に残す。
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ from app.providers.mesh3d import GenerationRequest, Mesh3DError, Mesh3DProvider
 from app.providers.storage import BlobStorage
 from app.repositories.base import ProjectRepository
 from app.services import meshproc
+from app.services.cad import CadService, DimensionMismatchError
 from app.services.design import InvalidStateError
 
 logger = logging.getLogger(__name__)
@@ -44,6 +50,7 @@ class ModelingService:
         mesh_provider: Mesh3DProvider,
         storage: BlobStorage,
         gen_source: str,
+        cad_service: CadService | None = None,
         poll_interval: float = _POLL_INTERVAL_SECONDS,
         poll_timeout: float = _POLL_TIMEOUT_SECONDS,
     ) -> None:
@@ -51,6 +58,7 @@ class ModelingService:
         self._provider = mesh_provider
         self._storage = storage
         self._gen_source = gen_source
+        self._cad = cad_service
         self._poll_interval = poll_interval
         self._poll_timeout = poll_timeout
 
@@ -94,6 +102,8 @@ class ModelingService:
             await self._generate(project)
         except Mesh3DError as exc:
             await self._fail(project, str(exc))
+        except DimensionMismatchError as exc:
+            await self._fail(project, str(exc))
         except meshproc.MeshProcessingError as exc:
             await self._fail(project, f"メッシュを処理できませんでした: {exc}")
         except Exception as exc:
@@ -101,6 +111,47 @@ class ModelingService:
             await self._fail(project, f"予期しないエラー: {exc}")
 
     async def _generate(self, project: Project) -> None:
+        assert project.model is not None
+        assert project.proposal is not None
+
+        # 機構ルートは寸法が要件そのものなので、可能なら CAD 経路を使う。
+        if project.route is DesignRoute.mechanism and self._cad is not None:
+            await self._generate_by_cad(project)
+            return
+
+        await self._generate_from_image(project)
+
+    async def _generate_by_cad(self, project: Project) -> None:
+        """機構ルート: 寸法が企画値に一致することを検証してから合格とする."""
+        assert self._cad is not None
+        assert project.model is not None
+        assert project.proposal is not None
+
+        project.model.job_status = JobStatus.running
+        project.model.gen_source = "parametric"
+        await self._repo.save(project)
+
+        result = await self._cad.build(project.proposal)
+        report = result.report
+
+        url = await self._storage.put(
+            project_id=project.id, data=result.stl, media_type="model/stl"
+        )
+        preview_url = await self._storage.put(
+            project_id=project.id, data=result.glb, media_type="model/gltf-binary"
+        )
+
+        self._apply_report(project, report, url=url, preview_url=preview_url)
+        project.model.source_code = result.source_code
+        project.model.attempts = result.attempts
+        # 寸法検証を通ったのでここで初めて guaranteed になる。
+        project.model.dimensional_accuracy = DimensionalAccuracy.guaranteed
+
+        project.model.job_status = JobStatus.done
+        project.status = ProjectStatus.model_review
+        await self._repo.save(project)
+
+    async def _generate_from_image(self, project: Project) -> None:
         assert project.model is not None
         assert project.proposal is not None
 
@@ -134,6 +185,28 @@ class ModelingService:
             project_id=project.id, data=processed.glb, media_type="model/gltf-binary"
         )
 
+        self._apply_report(project, report, url=url, preview_url=preview_url)
+
+        if project.route is DesignRoute.mechanism:
+            # 機構ルートは寸法が要件そのものなので、暫定であることを必ず伝える。
+            project.model.warnings.append(
+                "このモデルは画像から起こした暫定形状です。"
+                "寸法が要件になっている物のため、寸法保証のある作り直し(機構ルート)が必要です。"
+            )
+
+        project.model.job_status = JobStatus.done
+        project.status = ProjectStatus.model_review
+        await self._repo.save(project)
+
+    def _apply_report(
+        self,
+        project: Project,
+        report: meshproc.MeshReport,
+        *,
+        url: str,
+        preview_url: str,
+    ) -> None:
+        assert project.model is not None
         project.model.url = url
         project.model.preview_url = preview_url
         project.model.format = "stl"
@@ -146,17 +219,6 @@ class ModelingService:
         project.model.volume_mm3 = report.volume_mm3
         project.model.repair_actions = report.repair_actions
         project.model.warnings = list(report.warnings)
-
-        if project.route is DesignRoute.mechanism:
-            # 機構ルートは寸法が要件そのものなので、暫定であることを必ず伝える。
-            project.model.warnings.append(
-                "このモデルは画像から起こした暫定形状です。"
-                "寸法が要件になっている物のため、寸法保証のある作り直し(機構ルート)が必要です。"
-            )
-
-        project.model.job_status = JobStatus.done
-        project.status = ProjectStatus.model_review
-        await self._repo.save(project)
 
     def _pick_source_image(self, project: Project) -> str:
         """外観画像を優先する。3D 化の入力として最も素直なため."""

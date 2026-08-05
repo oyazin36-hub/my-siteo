@@ -14,13 +14,15 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
-from app.core.deps import get_design_service, get_modeling_service
+from app.core.deps import get_design_service, get_modeling_service, get_printing_service
 from app.domain.models import Idea, Project
 from app.providers.imagegen import ImageGenerationError
 from app.providers.llm import LLMError
 from app.repositories.base import ProjectNotFoundError
 from app.services.design import DesignService, InvalidStateError
 from app.services.modeling import ModelingService
+from app.services.printing import PrintingService
+from app.services.threemf import ThreeMfError
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -195,6 +197,26 @@ async def revise_model(
 
     background.add_task(modeling.run, project_id)
     return queued
+
+
+# --- STEP5-6: 印刷データ ---
+
+
+@router.post("/{project_id}/print", response_model=Project)
+async def build_print_data(
+    project_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    service: DesignService = Depends(get_design_service),
+    printing: PrintingService = Depends(get_printing_service),
+) -> Project:
+    """STEP5-6: 3Dモデルを承認して、Bambu Studio で開ける 3MF を作る."""
+    project = await _load_owned(service, project_id, user)
+    try:
+        return await printing.build(project)
+    except InvalidStateError as exc:
+        raise _to_http(exc) from exc
+    except ThreeMfError as exc:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc)) from exc
 
 
 # --- 添付画像のアップロード ---

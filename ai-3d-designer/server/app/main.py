@@ -3,6 +3,7 @@
 Phase 0: 疎通確認と認証
 Phase 1: STEP1〜3(アイデア入力・企画提案・画像生成)
 Phase 2: STEP4(3Dモデル生成)
+Phase 3: 3MF出力・機構ルート(パラメトリック CAD)
 """
 
 from __future__ import annotations
@@ -27,7 +28,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 外部依存の生成は起動時に一度だけ。設定の誤りを起動時点で表面化させる狙いもある。
     settings = get_settings()
     app.state.token_verifier = build_token_verifier(settings)
-    app.state.design_service, app.state.modeling_service = build_services(settings)
+    (
+        app.state.design_service,
+        app.state.modeling_service,
+        app.state.printing_service,
+    ) = build_services(settings)
     yield
 
 

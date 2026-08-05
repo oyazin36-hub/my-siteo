@@ -42,6 +42,20 @@ class Mesh3DMode(StrEnum):
     """企画の寸法どおりの箱を返すスタブ。実際の形状生成は行わない。"""
 
 
+class CadMode(StrEnum):
+    claude = "claude"
+    stub = "stub"
+    """企画の寸法どおりのケース形状を返すスタブ。設計判断は行わない。"""
+
+
+class SlicerMode(StrEnum):
+    bambu_cli = "bambu_cli"
+    """Bambu Studio CLI による実測。docker/bambu-studio.Dockerfile を使う。"""
+
+    heuristic = "heuristic"
+    """メッシュの体積からの概算。スライサが無くても必ず値を返す。"""
+
+
 class RepositoryMode(StrEnum):
     firestore = "firestore"
     memory = "memory"
@@ -81,6 +95,14 @@ class Settings(BaseSettings):
     tripo_api_key: str | None = None
     tripo_model_version: str | None = None
     """未指定なら SDK の既定版を使う。"""
+
+    cad_mode: CadMode = CadMode.claude
+    anthropic_api_key: str | None = None
+    anthropic_cad_model: str = "claude-opus-5"
+    openscad_binary: str = "openscad"
+
+    slicer_mode: SlicerMode = SlicerMode.heuristic
+    bambu_studio_binary: str = "bambu-studio"
 
     repository_mode: RepositoryMode = RepositoryMode.firestore
     storage_mode: StorageMode = StorageMode.cloud
@@ -127,6 +149,25 @@ class Settings(BaseSettings):
             raise ValueError(
                 "mesh3d_mode=tripo には APP_TRIPO_API_KEY が必要です。"
                 "キーがまだ無い場合は APP_MESH3D_MODE=stub を指定してください"
+                "(environment=local のときのみ)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _forbid_stub_cad_outside_local(self) -> Settings:
+        if self.cad_mode is CadMode.stub and self.environment is not Environment.local:
+            raise ValueError(
+                f"cad_mode=stub は environment=local でのみ許可されます "
+                f"(現在: environment={self.environment.value})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _require_anthropic_key_when_used(self) -> Settings:
+        if self.cad_mode is CadMode.claude and not self.anthropic_api_key:
+            raise ValueError(
+                "cad_mode=claude には APP_ANTHROPIC_API_KEY が必要です。"
+                "キーがまだ無い場合は APP_CAD_MODE=stub を指定してください"
                 "(environment=local のときのみ)"
             )
         return self

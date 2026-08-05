@@ -115,6 +115,10 @@ class ApiClient {
   Future<Project> reviseModel(String id, String request) =>
       _project('POST', '/projects/$id/model/revise', body: {'request': request});
 
+  /// STEP5-6: 3Dモデルを承認して、Bambu Studio で開ける 3MF を作る。
+  Future<Project> buildPrintData(String id) =>
+      _project('POST', '/projects/$id/print');
+
   /// 参考画像をアップロードして、アイデアに添付できる URL を得る。
   Future<String> uploadImage({
     required List<int> bytes,

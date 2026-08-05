@@ -138,6 +138,12 @@ class Model3D(BaseModel):
     gen_source: str | None = None
     """どの経路で作られたか。tripo / parametric / stub。"""
 
+    source_code: str | None = None
+    """機構ルートで生成された OpenSCAD コード。寸法を後から追える。"""
+
+    attempts: int = 0
+    """機構ルートで寸法が合うまでに要した試行回数。"""
+
     dimensional_accuracy: DimensionalAccuracy = DimensionalAccuracy.approximate
 
     watertight: bool = False
@@ -150,6 +156,23 @@ class Model3D(BaseModel):
     repair_actions: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     revisions: list[Revision] = Field(default_factory=list)
+
+
+class PrintData(BaseModel):
+    """STEP5-6: 印刷できる状態のデータと、その印刷条件."""
+
+    url: str | None = None
+    """Bambu Studio で開ける 3MF。"""
+
+    material: str = ""
+    print_time_min: int = 0
+    filament_grams: float = 0.0
+
+    estimated: bool = True
+    """True なら概算。スライサ実測ではない。"""
+
+    estimate_source: str = ""
+    warnings: list[str] = Field(default_factory=list)
 
 
 class Project(BaseModel):
@@ -165,6 +188,7 @@ class Project(BaseModel):
     images: list[GeneratedImage] = Field(default_factory=list)
     image_revisions: list[Revision] = Field(default_factory=list)
     model: Model3D | None = None
+    print_data: PrintData | None = None
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 

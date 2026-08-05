@@ -200,6 +200,8 @@ class Model3D {
     required this.repairActions,
     required this.warnings,
     required this.revisions,
+    this.sourceCode,
+    required this.attempts,
   });
 
   final JobStatus jobStatus;
@@ -221,6 +223,12 @@ class Model3D {
   final List<String> warnings;
   final List<Revision> revisions;
 
+  /// 機構ルートで生成された OpenSCAD コード。寸法を後から追える。
+  final String? sourceCode;
+
+  /// 機構ルートで寸法が合うまでに要した試行回数。
+  final int attempts;
+
   factory Model3D.fromJson(Map<String, dynamic> json) => Model3D(
         jobStatus: JobStatus.parse(json['job_status'] as String),
         error: json['error'] as String?,
@@ -240,7 +248,52 @@ class Model3D {
         revisions: (json['revisions'] as List<dynamic>)
             .map((e) => Revision.fromJson(e as Map<String, dynamic>))
             .toList(),
+        sourceCode: json['source_code'] as String?,
+        attempts: json['attempts'] as int? ?? 0,
       );
+}
+
+class PrintData {
+  const PrintData({
+    this.url,
+    required this.material,
+    required this.printTimeMin,
+    required this.filamentGrams,
+    required this.estimated,
+    required this.estimateSource,
+    required this.warnings,
+  });
+
+  /// Bambu Studio で開ける 3MF。
+  final String? url;
+
+  final String material;
+  final int printTimeMin;
+  final double filamentGrams;
+
+  /// true なら概算。スライサ実測ではない。
+  final bool estimated;
+
+  final String estimateSource;
+  final List<String> warnings;
+
+  factory PrintData.fromJson(Map<String, dynamic> json) => PrintData(
+        url: json['url'] as String?,
+        material: json['material'] as String,
+        printTimeMin: json['print_time_min'] as int,
+        filamentGrams: (json['filament_grams'] as num).toDouble(),
+        estimated: json['estimated'] as bool,
+        estimateSource: json['estimate_source'] as String,
+        warnings: (json['warnings'] as List<dynamic>).cast<String>(),
+      );
+
+  String get printTimeLabel {
+    final hours = printTimeMin ~/ 60;
+    final minutes = printTimeMin % 60;
+    if (hours == 0) return '約$minutes分';
+    if (minutes == 0) return '約$hours時間';
+    return '約$hours時間$minutes分';
+  }
 }
 
 class Project {
@@ -254,6 +307,7 @@ class Project {
     required this.images,
     required this.imageRevisions,
     this.model,
+    this.printData,
     required this.updatedAt,
   });
 
@@ -266,6 +320,7 @@ class Project {
   final List<GeneratedImage> images;
   final List<Revision> imageRevisions;
   final Model3D? model;
+  final PrintData? printData;
   final DateTime updatedAt;
 
   factory Project.fromJson(Map<String, dynamic> json) => Project(
@@ -286,6 +341,9 @@ class Project {
         model: json['model'] == null
             ? null
             : Model3D.fromJson(json['model'] as Map<String, dynamic>),
+        printData: json['print_data'] == null
+            ? null
+            : PrintData.fromJson(json['print_data'] as Map<String, dynamic>),
         updatedAt: DateTime.parse(json['updated_at'] as String),
       );
 }

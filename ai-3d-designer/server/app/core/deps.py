@@ -10,15 +10,28 @@ from pathlib import Path
 
 from fastapi import Depends, HTTPException, Request, status
 
-from app.core.config import AIMode, Mesh3DMode, RepositoryMode, Settings, StorageMode
+from app.core.config import (
+    AIMode,
+    CadMode,
+    Mesh3DMode,
+    RepositoryMode,
+    Settings,
+    SlicerMode,
+    StorageMode,
+)
+from app.providers.cadgen import CadCodeProvider, ClaudeCadProvider, StubCadProvider
 from app.providers.imagegen import ImageProvider, OpenAIImageProvider, StubImageProvider
 from app.providers.llm import LLMProvider, OpenAILLMProvider, StubLLMProvider
 from app.providers.mesh3d import Mesh3DProvider, StubMeshProvider, TripoMeshProvider
+from app.providers.openscad import OpenScadRenderer
+from app.providers.slicer import BambuStudioCliSlicer, HeuristicSlicer, Slicer
 from app.providers.storage import BlobStorage, CloudBlobStorage, LocalBlobStorage
 from app.repositories.base import ProjectRepository
 from app.repositories.memory import InMemoryProjectRepository
+from app.services.cad import CadService
 from app.services.design import DesignService
 from app.services.modeling import ModelingService
+from app.services.printing import PrintingService
 
 
 def build_repository(settings: Settings) -> ProjectRepository:
@@ -59,7 +72,29 @@ def build_mesh_provider(settings: Settings) -> Mesh3DProvider:
     return TripoMeshProvider(settings.tripo_api_key, settings.tripo_model_version)
 
 
-def build_services(settings: Settings) -> tuple[DesignService, ModelingService]:
+def build_cad_code_provider(settings: Settings) -> CadCodeProvider:
+    if settings.cad_mode is CadMode.stub:
+        return StubCadProvider()
+    assert settings.anthropic_api_key is not None
+    return ClaudeCadProvider(settings.anthropic_api_key, settings.anthropic_cad_model)
+
+
+def build_cad_service(settings: Settings) -> CadService:
+    return CadService(
+        code_provider=build_cad_code_provider(settings),
+        renderer=OpenScadRenderer(settings.openscad_binary),
+    )
+
+
+def build_slicer(settings: Settings) -> Slicer:
+    if settings.slicer_mode is SlicerMode.bambu_cli:
+        return BambuStudioCliSlicer(settings.bambu_studio_binary)
+    return HeuristicSlicer()
+
+
+def build_services(
+    settings: Settings,
+) -> tuple[DesignService, ModelingService, PrintingService]:
     """リポジトリとストレージは 2 サービスで共有する.
 
     別々に作るとインメモリ実装のときに保存先が分かれ、片方の書き込みが
@@ -79,8 +114,14 @@ def build_services(settings: Settings) -> tuple[DesignService, ModelingService]:
         mesh_provider=build_mesh_provider(settings),
         storage=storage,
         gen_source=settings.mesh3d_mode.value,
+        cad_service=build_cad_service(settings),
     )
-    return design, modeling
+    printing = PrintingService(
+        repository=repository,
+        storage=storage,
+        slicer=build_slicer(settings),
+    )
+    return design, modeling, printing
 
 
 def get_design_service(request: Request) -> DesignService:
@@ -95,6 +136,16 @@ def get_design_service(request: Request) -> DesignService:
 
 def get_modeling_service(request: Request) -> ModelingService:
     service: ModelingService | None = getattr(request.app.state, "modeling_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="サービスが初期化されていません",
+        )
+    return service
+
+
+def get_printing_service(request: Request) -> PrintingService:
+    service: PrintingService | None = getattr(request.app.state, "printing_service", None)
     if service is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
