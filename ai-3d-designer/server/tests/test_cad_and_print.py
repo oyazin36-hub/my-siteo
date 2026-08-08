@@ -283,6 +283,49 @@ class TestPrintDataEndpoint:
         assert body["print_data"]["estimated"] is True
         assert any("概算" in w for w in warnings)
 
+    def test_rebuilds_to_reflect_ams_registered_afterwards(self, client: TestClient) -> None:
+        """AMS を後から登録しても印刷データを作り直せること.
+
+        作り直せないと「今なにが入っているか」を登録する意味がなくなる。
+        """
+        project = self._through_model(client)
+        first = client.post(f"/projects/{project['id']}/print", headers=AUTH).json()
+
+        # 未登録なので、全パーツが「要装填」。
+        before = first["print_data"]["ams_plan"]["assignments"]
+        assert all(a["needs_loading"] for a in before)
+
+        client.put(
+            "/me/ams",
+            json={
+                "connected": True,
+                "slots": [
+                    {"slot": 1, "product": "Bambu PLA Basic", "color": "White"},
+                    {"slot": 2, "product": "Bambu PETG Basic", "color": "Black"},
+                    {"slot": 3, "product": "Bambu PLA Basic", "color": "Orange"},
+                ],
+            },
+            headers=AUTH,
+        )
+
+        second = client.post(f"/projects/{project['id']}/print", headers=AUTH)
+        assert second.status_code == 200, second.text
+        after = second.json()["print_data"]["ams_plan"]["assignments"]
+
+        # 同じパーツ構成のまま、装填済みのスロットを指すようになる。
+        assert [a["part"] for a in after] == [a["part"] for a in before]
+        assert not any(a["needs_loading"] for a in after)
+
+    def test_rebuild_produces_a_fresh_3mf(self, client: TestClient) -> None:
+        project = self._through_model(client)
+        first = client.post(f"/projects/{project['id']}/print", headers=AUTH).json()
+        second = client.post(f"/projects/{project['id']}/print", headers=AUTH).json()
+
+        # 古い URL を上書きしない。ダウンロード済みのリンクを壊さないため。
+        assert second["print_data"]["url"] != first["print_data"]["url"]
+        assert client.get(first["print_data"]["url"]).status_code == 200
+        assert client.get(second["print_data"]["url"]).status_code == 200
+
     def test_cannot_build_before_a_model_exists(self, client: TestClient) -> None:
         project = client.post("/projects", json={"text": MEISHI}, headers=AUTH).json()
         client.post(f"/projects/{project['id']}/proposal", headers=AUTH)

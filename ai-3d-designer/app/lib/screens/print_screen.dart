@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../models/project.dart';
 import '../services/api_client.dart';
+import 'ams_settings_screen.dart';
 
 /// 画面6: 印刷設定 (STEP5-6)。
 ///
@@ -52,13 +53,50 @@ class _PrintScreenState extends State<PrintScreen> {
     }
   }
 
+  /// AMS の装填状態を登録し直したあとに、スロット配置を作り直す。
+  Future<void> _rebuild() async {
+    final api = AppScope.of(context).apiClient;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      final project = await api.buildPrintData(widget.projectId);
+      if (!mounted) return;
+      setState(() => _project = project);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _openAmsSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AmsSettingsScreen()),
+    );
+    // 登録内容を反映するには作り直しが要る。
+    if (mounted) await _rebuild();
+  }
+
   @override
   Widget build(BuildContext context) {
     final project = _project;
     final printData = _printData;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('印刷データ')),
+      appBar: AppBar(
+        title: const Text('印刷データ'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: '作り直す',
+            onPressed: _busy || project == null ? null : _rebuild,
+          ),
+        ],
+      ),
       body: _busy && project == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -87,7 +125,10 @@ class _PrintScreenState extends State<PrintScreen> {
                   _Specs(printData: printData, model: project.model),
                   if (printData.amsPlan != null) ...[
                     const SizedBox(height: 16),
-                    _AmsPlanCard(plan: printData.amsPlan!),
+                    _AmsPlanCard(
+                      plan: printData.amsPlan!,
+                      onEditAms: _busy ? null : _openAmsSettings,
+                    ),
                   ],
                   const SizedBox(height: 16),
                   for (final warning in printData.warnings) ...[
@@ -228,9 +269,12 @@ class _WarningTile extends StatelessWidget {
 }
 
 class _AmsPlanCard extends StatelessWidget {
-  const _AmsPlanCard({required this.plan});
+  const _AmsPlanCard({required this.plan, this.onEditAms});
 
   final AmsPlan plan;
+
+  /// AMS の装填状態を登録し直して、この配置を作り直す。
+  final VoidCallback? onEditAms;
 
   @override
   Widget build(BuildContext context) {
@@ -259,6 +303,15 @@ class _AmsPlanCard extends StatelessWidget {
               _AssignmentTile(assignment: assignment),
               const SizedBox(height: 12),
             ],
+            if (onEditAms != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: onEditAms,
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('AMS の装填状態を登録し直す'),
+                ),
+              ),
           ],
         ),
       ),
