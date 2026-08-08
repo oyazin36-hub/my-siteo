@@ -4,6 +4,10 @@ server/**/__pycache__/
 server/.pytest_cache/
 server/.ruff_cache/
 
+# APP_STORAGE_MODE=local のときの保存先 (APP_LOCAL_MEDIA_ROOT)。
+# 生成した画像・STL・GLB・3MF が溜まる。成果物なのでコミットしない。
+server/var/
+
 # 秘密情報。絶対にコミットしないこと。
 server/.env
 server/serviceAccount*.json
