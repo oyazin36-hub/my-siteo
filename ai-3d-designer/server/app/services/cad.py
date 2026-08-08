@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.domain import feasibility
 from app.domain.models import Proposal
 from app.providers.cadgen import CadCodeProvider, CadGenerationError
 from app.providers.mesh3d import MeshArtifact
@@ -46,6 +47,13 @@ class DimensionMismatchError(Exception):
         self.actual = actual
 
 
+class NoRoomForContentsError(Exception):
+    """外形は一致したが、収納物が入る空間が内部に無かった.
+
+    外形だけ合わせて中身が入らない物を「寸法保証つき」と言わないための例外。
+    """
+
+
 class CadService:
     def __init__(
         self,
@@ -61,15 +69,18 @@ class CadService:
         self._max_attempts = max_attempts
 
     async def build(self, proposal: Proposal) -> CadResult:
-        """寸法が一致するまで作り直す。最後まで合わなければ例外."""
+        """寸法が一致し、収納物が入るまで作り直す。最後まで駄目なら例外."""
         target = (
             proposal.size_mm.width,
             proposal.size_mm.depth,
             proposal.size_mm.height,
         )
+        # 収納物が読み取れる企画なら、外形だけでなく中身の入る空間も見る。
+        content_box = feasibility.required_content_box_mm(proposal)
 
         previous_code: str | None = None
         actual: tuple[float, float, float] | None = None
+        hollow_failure: str | None = None
 
         for attempt in range(1, self._max_attempts + 1):
             source = await self._codegen.generate(
@@ -79,21 +90,39 @@ class CadService:
 
             # 装飾ルートと同じ後処理を通す。ただし拡縮はしない。
             # ここで縮めてしまうと、CAD が出した正しい寸法を壊すことになる。
-            processed = meshproc.process(MeshArtifact(data=stl_bytes, format="stl"))
+            processed = meshproc.process(
+                MeshArtifact(data=stl_bytes, format="stl"), content_box_mm=content_box
+            )
             actual = processed.report.size_mm
-
-            if self._matches(target, actual):
-                return CadResult(
-                    stl=processed.stl,
-                    glb=processed.glb,
-                    source_code=source,
-                    report=processed.report,
-                    attempts=attempt,
-                )
-
             previous_code = source
 
+            if not self._matches(target, actual):
+                hollow_failure = None
+                continue
+
+            # 外形が合っていても中が詰まっていることがある。
+            # content_fits が None(判定できず)は落とさない。
+            # 判定できないことを不合格の理由にすると、作り直しても直らない。
+            if processed.report.content_fits is False:
+                assert content_box is not None
+                hollow_failure = (
+                    f"外形は一致したが、収納物 "
+                    f"{content_box[0]:.0f}x{content_box[1]:.0f}x{content_box[2]:.1f}mm "
+                    f"の入る空間が内部にない"
+                )
+                continue
+
+            return CadResult(
+                stl=processed.stl,
+                glb=processed.glb,
+                source_code=source,
+                report=processed.report,
+                attempts=attempt,
+            )
+
         assert actual is not None
+        if hollow_failure is not None:
+            raise NoRoomForContentsError(hollow_failure)
         raise DimensionMismatchError(target, actual)
 
     def _matches(
@@ -107,5 +136,6 @@ __all__ = [
     "CadResult",
     "CadService",
     "DimensionMismatchError",
+    "NoRoomForContentsError",
     "OpenScadError",
 ]

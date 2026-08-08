@@ -7,6 +7,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
+from app.providers.openscad import OpenScadRenderer
+
+#: 機構ルートは OpenSCAD の実行ファイルが要る。手元に無い人を止めないため飛ばす。
+#: CI では workflow でインストールしているので、実際に走る。
+requires_openscad = pytest.mark.skipif(
+    not OpenScadRenderer().available,  # available はプロパティ
+    reason="openscad が見つかりません (apt install openscad)",
+)
 
 
 @pytest.fixture(autouse=True)

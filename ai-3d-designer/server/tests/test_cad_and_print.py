@@ -20,6 +20,10 @@ from app.providers.openscad import OpenScadRenderer, UnsafeScadError, assert_saf
 from app.providers.slicer import HeuristicSlicer, SlicerError
 from app.services.cad import CadService, DimensionMismatchError
 from app.services.threemf import ThreeMfMetadata, from_mesh, read_metadata
+from tests.conftest import requires_openscad
+
+# 機構ルートは OpenSCAD の実行ファイルが要る。
+pytestmark = requires_openscad
 
 AUTH = {"Authorization": "Bearer test-user"}
 MEISHI = "名刺入れをつくって。ボタンで取り出せて、30枚入って、ポケットに入るサイズ"
@@ -125,6 +129,17 @@ class TestDimensionGuarantee:
             await service.build(_proposal())
 
 
+def _hollow_case(width: float, depth: float, height: float, wall: float = 2.0) -> str:
+    """外形が指定どおりで、中身の入る空洞があるケース."""
+    return (
+        f"difference() {{\n"
+        f"  cube([{width}, {depth}, {height}]);\n"
+        f"  translate([{wall}, {wall}, 1.2])\n"
+        f"    cube([{width - 2 * wall}, {depth - 2 * wall}, {height}]);\n"
+        f"}}"
+    )
+
+
 class _WrongThenRightProvider:
     """最初の n 回は間違った寸法を返し、その後は正しい寸法を返す."""
 
@@ -147,8 +162,10 @@ class _WrongThenRightProvider:
         if self._calls <= self._wrong_attempts:
             return "cube([50, 50, 50]);"
 
+        # 中空のケース。中身の入る空間まで見るようになったので、
+        # 詰まった立方体では正解にならない。
         size = proposal.size_mm
-        return f"cube([{size.width}, {size.depth}, {size.height}]);"
+        return _hollow_case(size.width, size.depth, size.height)
 
 
 class _UnsafeProvider:

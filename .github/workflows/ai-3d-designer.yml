@@ -26,6 +26,11 @@ jobs:
           cache: pip
           cache-dependency-path: ai-3d-designer/server/requirements-dev.txt
 
+      - name: OpenSCAD をインストール
+        # 機構ルート(パラメトリック CAD)の実体。これが無いと
+        # 寸法保証と内部空間の検証が丸ごと飛ばされる。
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends openscad
+
       - name: 依存をインストール
         run: pip install -r requirements-dev.txt
 

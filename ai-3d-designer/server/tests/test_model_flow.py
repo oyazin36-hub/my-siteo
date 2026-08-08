@@ -10,6 +10,8 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import requires_openscad
+
 AUTH = {"Authorization": "Bearer test-user"}
 OTHER_AUTH = {"Authorization": "Bearer someone-else"}
 
@@ -85,6 +87,8 @@ class TestStep4:
         assert response.status_code == 404
 
 
+# 機構ルートを通るので OpenSCAD が要る。
+@requires_openscad
 class TestRoutesDifferInGuarantee:
     """装飾ルートと機構ルートで寸法の扱いが違うことを保証する.
 

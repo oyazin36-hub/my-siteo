@@ -11,6 +11,7 @@ import io
 from dataclasses import dataclass, field
 
 from app.providers.mesh3d import MeshArtifact
+from app.services import interior
 
 #: Bambu Lab P2S の造形範囲 (mm)。
 P2S_BUILD_VOLUME_MM = (256.0, 256.0, 256.0)
@@ -31,6 +32,13 @@ class MeshReport:
     volume_mm3: float
     repair_actions: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+
+    content_fits: bool | None = None
+    """収納物が入る空間が内部にあるか。None は未検証か判定できなかった場合。
+
+    True でも「約束した機構が入っている」ことまでは意味しない。
+    空間があることしか分からない(services/interior.py 参照)。
+    """
 
     @property
     def printable(self) -> bool:
@@ -111,6 +119,7 @@ def analyze(
     mesh: object,
     repair_actions: list[str] | None = None,
     target_size_mm: tuple[float, float, float] | None = None,
+    content_box_mm: tuple[float, float, float] | None = None,
 ) -> MeshReport:
     import trimesh
 
@@ -147,6 +156,16 @@ def analyze(
                 "寸法が重要な場合は機構ルートでの作り直しが必要です。"
             )
 
+    content_fits: bool | None = None
+    if content_box_mm is not None:
+        # 外形が合っていても中が詰まっていることがある。実際の形状で確かめる。
+        fit = interior.content_fits(mesh, content_box_mm)
+        content_fits = fit.fits
+        if fit.fits is False:
+            warnings.append(f"{fit.reason}。中身が入らないため作り直しが必要です。")
+        elif fit.fits is None:
+            warnings.append(f"収納物が入るかを確認できませんでした({fit.reason})。")
+
     return MeshReport(
         watertight=watertight,
         face_count=len(mesh.faces),
@@ -154,6 +173,7 @@ def analyze(
         volume_mm3=float(mesh.volume) if watertight else 0.0,
         repair_actions=repair_actions or [],
         warnings=warnings,
+        content_fits=content_fits,
     )
 
 
@@ -220,6 +240,7 @@ def process(
     artifact: MeshArtifact,
     *,
     target_size_mm: tuple[float, float, float] | None = None,
+    content_box_mm: tuple[float, float, float] | None = None,
 ) -> ProcessedMesh:
     """生成物を受け取り、印刷用 STL・表示用 GLB・診断結果を返す通しの処理."""
     mesh = load(artifact)
@@ -233,5 +254,5 @@ def process(
     return ProcessedMesh(
         stl=to_stl(mesh),
         glb=to_glb(mesh),
-        report=analyze(mesh, actions, target_size_mm),
+        report=analyze(mesh, actions, target_size_mm, content_box_mm),
     )

@@ -20,6 +20,7 @@ from app.domain.filaments import (
 from app.domain.models import Dimensions, Proposal
 from app.providers.parts import StubPartsDecomposer
 from app.services.materials import MaterialsService
+from tests.conftest import requires_openscad
 
 AUTH = {"Authorization": "Bearer test-user"}
 MEISHI = "名刺入れをつくって。ボタンで取り出せて、30枚入って、ポケットに入るサイズ"
@@ -259,6 +260,8 @@ class TestAmsEndpoints:
         assert "Bambu PETG Basic" in products
 
 
+# 機構ルートを通るので OpenSCAD が要る。
+@requires_openscad
 class TestEndToEnd:
     """Phase 4 の完了条件そのもの."""
 

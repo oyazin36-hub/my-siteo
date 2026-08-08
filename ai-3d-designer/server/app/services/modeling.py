@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from app.domain import feasibility
 from app.domain.models import (
     DesignRoute,
     DimensionalAccuracy,
@@ -32,7 +33,7 @@ from app.providers.mesh3d import GenerationRequest, Mesh3DError, Mesh3DProvider
 from app.providers.storage import BlobStorage
 from app.repositories.base import ProjectRepository
 from app.services import meshproc
-from app.services.cad import CadService, DimensionMismatchError
+from app.services.cad import CadService, DimensionMismatchError, NoRoomForContentsError
 from app.services.design import InvalidStateError
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,8 @@ class ModelingService:
             await self._fail(project, str(exc))
         except DimensionMismatchError as exc:
             await self._fail(project, str(exc))
+        except NoRoomForContentsError as exc:
+            await self._fail(project, str(exc))
         except meshproc.MeshProcessingError as exc:
             await self._fail(project, f"メッシュを処理できませんでした: {exc}")
         except Exception as exc:
@@ -173,6 +176,8 @@ class ModelingService:
         processed = meshproc.process(
             artifact,
             target_size_mm=(target.width, target.depth, target.height),
+            # このルートは元々寸法を保証しないので、入らなくても失敗にはせず警告に留める。
+            content_box_mm=feasibility.required_content_box_mm(project.proposal),
         )
         report = processed.report
 
