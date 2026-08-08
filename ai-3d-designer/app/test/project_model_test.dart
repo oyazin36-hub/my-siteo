@@ -21,7 +21,8 @@ const _projectJson = '''
     "material": "Bambu PETG Basic",
     "print_time_est_min": 180,
     "features": ["窓付きフタ", "板バネ一体成形"],
-    "revisions": [{"request": "もう少し薄くして", "applied_at": "2026-08-05T12:00:00Z"}]
+    "revisions": [{"request": "もう少し薄くして", "applied_at": "2026-08-05T12:00:00Z"}],
+    "warnings": []
   },
   "images": [
     {
@@ -75,6 +76,23 @@ void main() {
       expect(proposal.capacity, '名刺30枚');
       expect(proposal.features, hasLength(2));
       expect(proposal.revisions.single.request, 'もう少し薄くして');
+      // 成立性の検算結果。この企画には問題がない。
+      expect(proposal.warnings, isEmpty);
+    });
+
+    test('成立しない企画の警告を解釈できる', () {
+      final raw = jsonDecode(_projectJson) as Map<String, dynamic>;
+      (raw['proposal'] as Map<String, dynamic>)['warnings'] = [
+        '高さが足りません。名刺30枚(6.9mm)と機構(2.5mm)で 9.4mm 要りますが、'
+            '内寸高さは 8.3mm です。高さを 11.8mm 以上にするか、25枚に減らしてください。',
+      ];
+      expect(Project.fromJson(raw).proposal!.warnings, hasLength(1));
+    });
+
+    test('warnings が無い古い応答も読める', () {
+      final raw = jsonDecode(_projectJson) as Map<String, dynamic>;
+      (raw['proposal'] as Map<String, dynamic>).remove('warnings');
+      expect(Project.fromJson(raw).proposal!.warnings, isEmpty);
     });
 
     test('3Dモデルを解釈できる', () {

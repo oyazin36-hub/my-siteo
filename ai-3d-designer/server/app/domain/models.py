@@ -96,6 +96,12 @@ class Proposal(BaseModel):
     features: list[str] = Field(default_factory=list)
     revisions: list[Revision] = Field(default_factory=list)
 
+    warnings: list[str] = Field(default_factory=list)
+    """成立しない点。app/domain/feasibility.py の検算結果。
+
+    空でも「大丈夫」とは限らない(判断できない企画では検算しない)。
+    """
+
 
 class GeneratedImage(BaseModel):
     """STEP3: 生成された画像 1 枚."""

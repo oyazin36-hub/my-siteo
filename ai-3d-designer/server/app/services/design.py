@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain import feasibility
 from app.domain.models import (
     GeneratedImage,
     Idea,
@@ -160,6 +161,9 @@ class DesignService:
             print_time_est_min=draft.print_time_est_min,
             features=draft.features,
         )
+        # 形を作る前に、収納物と機構が内寸に収まるかを検算しておく。
+        # 寸法検証は外形の箱しか見ないので、ここで見ないと誰も見ない。
+        project.proposal.warnings = feasibility.check(project.proposal)
 
     async def _render(
         self,

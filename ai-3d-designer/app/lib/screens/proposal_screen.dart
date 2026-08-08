@@ -133,6 +133,10 @@ class _ProposalScreenState extends State<ProposalScreen> {
                   ),
                 ],
                 if (proposal != null) ...[
+                  if (proposal.warnings.isNotEmpty) ...[
+                    _FeasibilityCard(warnings: proposal.warnings),
+                    const SizedBox(height: 12),
+                  ],
                   _ProposalCard(proposal: proposal, route: project!.route),
                   if (proposal.revisions.isNotEmpty) ...[
                     const SizedBox(height: 12),
@@ -157,6 +161,63 @@ class _ProposalScreenState extends State<ProposalScreen> {
                 ],
               ],
             ),
+    );
+  }
+}
+
+/// 企画が物理的に成立しない点を、案そのものより先に見せる。
+///
+/// ここを見落としたまま進むと、外形は指定どおりなのに機構が入っていない
+/// モデルが出来てしまう。承認ボタンより前に置くのはそのため。
+class _FeasibilityCard extends StatelessWidget {
+  const _FeasibilityCard({required this.warnings});
+
+  final List<String> warnings;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: scheme.onErrorContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'この寸法では作れません',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: scheme.onErrorContainer,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            for (final warning in warnings)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  warning,
+                  style: TextStyle(color: scheme.onErrorContainer),
+                ),
+              ),
+            const SizedBox(height: 4),
+            Text(
+              'このまま進めると、外形は指定どおりでも中身が入らないものが出来ます。'
+              '「修正を指示する」から寸法か収納数を変えてください。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onErrorContainer,
+                  ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

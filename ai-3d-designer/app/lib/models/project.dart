@@ -102,6 +102,7 @@ class Proposal {
     required this.printTimeEstMin,
     required this.features,
     required this.revisions,
+    this.warnings = const [],
   });
 
   final String productName;
@@ -113,6 +114,10 @@ class Proposal {
   final int printTimeEstMin;
   final List<String> features;
   final List<Revision> revisions;
+
+  /// この企画が成立しない点。空でも「大丈夫」とは限らない
+  /// (収納物が読み取れない企画では検算しない)。
+  final List<String> warnings;
 
   factory Proposal.fromJson(Map<String, dynamic> json) => Proposal(
         productName: json['product_name'] as String,
@@ -126,6 +131,8 @@ class Proposal {
         revisions: (json['revisions'] as List<dynamic>)
             .map((e) => Revision.fromJson(e as Map<String, dynamic>))
             .toList(),
+        warnings:
+            ((json['warnings'] as List<dynamic>?) ?? const []).cast<String>(),
       );
 
   String get printTimeLabel {
