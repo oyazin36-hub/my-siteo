@@ -33,6 +33,10 @@ MAX_VOXELS = 4_000_000
 #: メッシュが荒れていて even-odd 則が信用できない状態。
 _MAX_ODD_COLUMN_RATIO = 0.02
 
+#: 標本点をボクセルのどこに置くか(ピッチに対する比)。
+#: 中央(0.5)だと設計寸法の面にちょうど乗るので、無理数を使ってずらす。
+_SAMPLE_OFFSET = 1.0 / 3.0**0.5  # ≒ 0.5774
+
 
 @dataclass(frozen=True)
 class FitResult:
@@ -67,9 +71,14 @@ def voxelize(mesh: object, pitch: float) -> tuple[np.ndarray, float]:
     assert isinstance(mesh, trimesh.Trimesh)
 
     lo, hi = mesh.bounds
-    xs = np.arange(lo[0] + pitch / 2, hi[0], pitch)
-    ys = np.arange(lo[1] + pitch / 2, hi[1], pitch)
-    zs = np.arange(lo[2] + pitch / 2, hi[2], pitch)
+    # 標本点をピッチのちょうど半分に置くと、0.1mm 刻みで設計された面
+    # (壁が 1.5mm、段が 0.5mm など)にそのまま乗ってしまう。
+    # 面の上を走る直線は交点の数が不定になり、even-odd 則が崩れる。
+    # 1/sqrt(3) は 10 進で有限桁にならないので、設計寸法とは決して一致しない。
+    offset = pitch * _SAMPLE_OFFSET
+    xs = np.arange(lo[0] + offset, hi[0], pitch)
+    ys = np.arange(lo[1] + offset, hi[1], pitch)
+    zs = np.arange(lo[2] + offset, hi[2], pitch)
     if xs.size == 0 or ys.size == 0 or zs.size == 0:
         return np.zeros((max(xs.size, 1), max(ys.size, 1), max(zs.size, 1)), bool), 0.0
 

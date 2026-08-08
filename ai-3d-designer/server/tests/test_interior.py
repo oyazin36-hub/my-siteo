@@ -96,6 +96,31 @@ class TestContentFits:
         assert result.undetermined
 
 
+class TestSampleAlignment:
+    def test_judges_a_case_whose_faces_land_on_the_grid(self) -> None:
+        """設計寸法が標本格子に乗っても判定できること.
+
+        標本点をピッチの中央(0.5mm 刻み)に置いていたときは、1.5mm の段を
+        持つこのケースで交点の数が不定になり「判定できません」になっていた。
+        実際に名刺ケースを作ろうとして出た症状。
+        """
+        mesh = render(
+            "difference() {\n"
+            "  cube([96, 60, 13.6]);\n"
+            "  translate([2, 2, 1.2]) cube([92, 56, 13]);\n"
+            "  translate([1.5, 1.5, 12.0]) cube([93, 57, 2]);\n"  # フタの座。1.5mm の段
+            "}"
+        )
+        result = interior.content_fits(mesh, CARD_BOX)
+
+        assert result.fits is True, result.reason
+
+    def test_samples_never_sit_on_a_tenth_of_a_millimetre(self) -> None:
+        # 設計寸法は 0.1mm 刻みで書かれる。そこに乗らないことが要点。
+        offset = interior._SAMPLE_OFFSET
+        assert abs(offset * 10 - round(offset * 10)) > 0.1
+
+
 class TestPitch:
     def test_coarsens_the_grid_for_large_models(self) -> None:
         # 造形範囲いっぱいでも、格子が爆発しないこと。

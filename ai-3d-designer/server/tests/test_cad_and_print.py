@@ -29,12 +29,17 @@ AUTH = {"Authorization": "Bearer test-user"}
 MEISHI = "名刺入れをつくって。ボタンで取り出せて、30枚入って、ポケットに入るサイズ"
 
 
-def _proposal(width: float = 96, depth: float = 60, height: float = 13.4) -> Proposal:
+def _proposal(
+    width: float = 96,
+    depth: float = 60,
+    height: float = 13.4,
+    capacity: str | None = "名刺30枚",
+) -> Proposal:
     return Proposal(
         product_name="スマートスライド名刺ケース",
         concept="ボタンで名刺が持ち上がるケース",
         size_mm=Dimensions(width=width, depth=depth, height=height),
-        capacity="名刺30枚",
+        capacity=capacity,
         mechanism="ボタン式スライド排出",
         material="Bambu PETG Basic",
         print_time_est_min=180,
@@ -94,7 +99,9 @@ class TestDimensionGuarantee:
     async def test_works_for_other_sizes(self) -> None:
         service = CadService(code_provider=StubCadProvider(), renderer=OpenScadRenderer())
 
-        result = await service.build(_proposal(40, 25.5, 8))
+        # 40 x 25.5mm に名刺(91 x 55mm)は入らない。ここで見たいのは寸法の一致だけ
+        # なので、収納物を指定せず中身の検査は外す。
+        result = await service.build(_proposal(40, 25.5, 8, capacity=None))
 
         assert result.report.size_mm == pytest.approx((40.0, 25.5, 8.0), abs=0.1)
 
