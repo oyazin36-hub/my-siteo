@@ -4,6 +4,7 @@ Phase 0: 疎通確認と認証
 Phase 1: STEP1〜3(アイデア入力・企画提案・画像生成)
 Phase 2: STEP4(3Dモデル生成)
 Phase 3: 3MF出力・機構ルート(パラメトリック CAD)
+Phase 4: STEP5-6(フィラメント選定・AMS配置)
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.projects import router as projects_router
 from app.api.routes import router as system_router
+from app.api.settings import router as settings_router
 from app.core.auth import build_token_verifier
 from app.core.config import StorageMode, get_settings
 from app.core.deps import build_services
@@ -32,6 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.design_service,
         app.state.modeling_service,
         app.state.printing_service,
+        app.state.user_repository,
     ) = build_services(settings)
     yield
 
@@ -56,6 +59,7 @@ def create_app() -> FastAPI:
 
     app.include_router(system_router)
     app.include_router(projects_router)
+    app.include_router(settings_router)
 
     if settings.storage_mode is StorageMode.local:
         # 開発時に生成画像をアプリから表示できるようにする。

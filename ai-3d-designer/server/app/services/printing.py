@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from app.domain.ams import AmsState
 from app.domain.models import PrintData, Project, ProjectStatus
 from app.providers.slicer import Slicer, SlicerError
 from app.providers.storage import BlobStorage
 from app.repositories.base import ProjectRepository
 from app.services import threemf
 from app.services.design import InvalidStateError
+from app.services.materials import MaterialsService
 
 
 class PrintingService:
@@ -17,12 +19,14 @@ class PrintingService:
         repository: ProjectRepository,
         storage: BlobStorage,
         slicer: Slicer,
+        materials: MaterialsService,
     ) -> None:
         self._repo = repository
         self._storage = storage
         self._slicer = slicer
+        self._materials = materials
 
-    async def build(self, project: Project) -> Project:
+    async def build(self, project: Project, ams: AmsState | None = None) -> Project:
         """3D モデルの STL から 3MF を作り、印刷条件を算出する."""
         if project.status is not ProjectStatus.model_review or project.model is None:
             raise InvalidStateError(project.status, "印刷データの生成")
@@ -76,6 +80,12 @@ class PrintingService:
                     "印刷時間と使用量は体積からの概算です。"
                     "正確な値は Bambu Studio でスライスして確認してください。"
                 )
+
+            # STEP5-6: パーツ分解 → フィラメント選定 → AMS スロット配置。
+            plan = await self._materials.plan(
+                proposal, total_grams=estimate.filament_grams, ams=ams
+            )
+
             project.print_data = PrintData(
                 url=url,
                 material=proposal.material,
@@ -83,7 +93,8 @@ class PrintingService:
                 filament_grams=estimate.filament_grams,
                 estimated=estimate.estimated,
                 estimate_source=estimate.source,
-                warnings=warnings,
+                ams_plan=plan,
+                warnings=[*warnings, *plan.warnings],
             )
 
         project.status = ProjectStatus.print_ready

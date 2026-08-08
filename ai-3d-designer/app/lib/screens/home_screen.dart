@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../models/project.dart';
 import '../services/api_client.dart';
+import 'ams_settings_screen.dart';
 import 'connection_screen.dart';
 import 'idea_input_screen.dart';
 import 'proposal_screen.dart';
@@ -68,8 +69,15 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('AI 3D Product Designer'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.view_module),
+            tooltip: 'AMS の装填状態',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AmsSettingsScreen()),
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.settings),
-            tooltip: '設定',
+            tooltip: '接続診断',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) {

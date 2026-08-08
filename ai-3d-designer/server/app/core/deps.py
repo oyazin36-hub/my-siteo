@@ -24,12 +24,18 @@ from app.providers.imagegen import ImageProvider, OpenAIImageProvider, StubImage
 from app.providers.llm import LLMProvider, OpenAILLMProvider, StubLLMProvider
 from app.providers.mesh3d import Mesh3DProvider, StubMeshProvider, TripoMeshProvider
 from app.providers.openscad import OpenScadRenderer
+from app.providers.parts import ClaudePartsDecomposer, PartsDecomposer, StubPartsDecomposer
 from app.providers.slicer import BambuStudioCliSlicer, HeuristicSlicer, Slicer
 from app.providers.storage import BlobStorage, CloudBlobStorage, LocalBlobStorage
 from app.repositories.base import ProjectRepository
 from app.repositories.memory import InMemoryProjectRepository
+from app.repositories.users import (
+    InMemoryUserSettingsRepository,
+    UserSettingsRepository,
+)
 from app.services.cad import CadService
 from app.services.design import DesignService
+from app.services.materials import MaterialsService
 from app.services.modeling import ModelingService
 from app.services.printing import PrintingService
 
@@ -72,6 +78,22 @@ def build_mesh_provider(settings: Settings) -> Mesh3DProvider:
     return TripoMeshProvider(settings.tripo_api_key, settings.tripo_model_version)
 
 
+def build_user_repository(settings: Settings) -> UserSettingsRepository:
+    if settings.repository_mode is RepositoryMode.memory:
+        return InMemoryUserSettingsRepository()
+
+    from app.repositories.users import FirestoreUserSettingsRepository
+
+    return FirestoreUserSettingsRepository(settings.firebase_project_id)
+
+
+def build_parts_decomposer(settings: Settings) -> PartsDecomposer:
+    if settings.cad_mode is CadMode.stub:
+        return StubPartsDecomposer()
+    assert settings.anthropic_api_key is not None
+    return ClaudePartsDecomposer(settings.anthropic_api_key, settings.anthropic_cad_model)
+
+
 def build_cad_code_provider(settings: Settings) -> CadCodeProvider:
     if settings.cad_mode is CadMode.stub:
         return StubCadProvider()
@@ -94,7 +116,7 @@ def build_slicer(settings: Settings) -> Slicer:
 
 def build_services(
     settings: Settings,
-) -> tuple[DesignService, ModelingService, PrintingService]:
+) -> tuple[DesignService, ModelingService, PrintingService, UserSettingsRepository]:
     """リポジトリとストレージは 2 サービスで共有する.
 
     別々に作るとインメモリ実装のときに保存先が分かれ、片方の書き込みが
@@ -120,8 +142,9 @@ def build_services(
         repository=repository,
         storage=storage,
         slicer=build_slicer(settings),
+        materials=MaterialsService(decomposer=build_parts_decomposer(settings)),
     )
-    return design, modeling, printing
+    return design, modeling, printing, build_user_repository(settings)
 
 
 def get_design_service(request: Request) -> DesignService:
@@ -152,6 +175,16 @@ def get_printing_service(request: Request) -> PrintingService:
             detail="サービスが初期化されていません",
         )
     return service
+
+
+def get_user_repository(request: Request) -> UserSettingsRepository:
+    repo: UserSettingsRepository | None = getattr(request.app.state, "user_repository", None)
+    if repo is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="サービスが初期化されていません",
+        )
+    return repo
 
 
 DesignServiceDep = Depends(get_design_service)

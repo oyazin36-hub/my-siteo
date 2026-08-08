@@ -85,6 +85,10 @@ class _PrintScreenState extends State<PrintScreen> {
                   _ReadyBanner(title: project!.title),
                   const SizedBox(height: 16),
                   _Specs(printData: printData, model: project.model),
+                  if (printData.amsPlan != null) ...[
+                    const SizedBox(height: 16),
+                    _AmsPlanCard(plan: printData.amsPlan!),
+                  ],
                   const SizedBox(height: 16),
                   for (final warning in printData.warnings) ...[
                     _WarningTile(message: warning),
@@ -219,6 +223,100 @@ class _WarningTile extends StatelessWidget {
           Expanded(child: Text(message)),
         ],
       ),
+    );
+  }
+}
+
+class _AmsPlanCard extends StatelessWidget {
+  const _AmsPlanCard({required this.plan});
+
+  final AmsPlan plan;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'フィラメントとAMS配置',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const Spacer(),
+                if (plan.requiresLoading)
+                  Text(
+                    '要装填',
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+              ],
+            ),
+            const Divider(height: 24),
+            for (final assignment in plan.assignments) ...[
+              _AssignmentTile(assignment: assignment),
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AssignmentTile extends StatelessWidget {
+  const _AssignmentTile({required this.assignment});
+
+  final SlotAssignment assignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: assignment.needsLoading
+                    ? Theme.of(context).colorScheme.errorContainer
+                    : Theme.of(context).colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                assignment.slotLabel,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                assignment.part,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            Text('${assignment.grams.toStringAsFixed(1)} g'),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            '${assignment.product} (${assignment.color})',
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, top: 2),
+          child: Text(
+            assignment.reason,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ],
     );
   }
 }

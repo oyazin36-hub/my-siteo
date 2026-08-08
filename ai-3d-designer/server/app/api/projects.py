@@ -14,11 +14,17 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
-from app.core.deps import get_design_service, get_modeling_service, get_printing_service
+from app.core.deps import (
+    get_design_service,
+    get_modeling_service,
+    get_printing_service,
+    get_user_repository,
+)
 from app.domain.models import Idea, Project
 from app.providers.imagegen import ImageGenerationError
 from app.providers.llm import LLMError
 from app.repositories.base import ProjectNotFoundError
+from app.repositories.users import UserSettingsRepository
 from app.services.design import DesignService, InvalidStateError
 from app.services.modeling import ModelingService
 from app.services.printing import PrintingService
@@ -208,11 +214,17 @@ async def build_print_data(
     user: AuthenticatedUser = Depends(get_current_user),
     service: DesignService = Depends(get_design_service),
     printing: PrintingService = Depends(get_printing_service),
+    users: UserSettingsRepository = Depends(get_user_repository),
 ) -> Project:
-    """STEP5-6: 3Dモデルを承認して、Bambu Studio で開ける 3MF を作る."""
+    """STEP5-6: 3Dモデルを承認して、Bambu Studio で開ける 3MF を作る.
+
+    AMS の装填状態を登録済みなら、それに合わせたスロット配置を返す。
+    未登録なら「何を装填すべきか」の提案になる。
+    """
     project = await _load_owned(service, project_id, user)
+    settings = await users.get(user.uid)
     try:
-        return await printing.build(project)
+        return await printing.build(project, ams=settings.ams)
     except InvalidStateError as exc:
         raise _to_http(exc) from exc
     except ThreeMfError as exc:

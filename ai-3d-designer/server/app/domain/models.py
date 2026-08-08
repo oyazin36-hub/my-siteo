@@ -11,6 +11,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.domain.ams import AmsPlan
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -172,6 +174,10 @@ class PrintData(BaseModel):
     """True なら概算。スライサ実測ではない。"""
 
     estimate_source: str = ""
+
+    ams_plan: AmsPlan | None = None
+    """STEP5-6: パーツ別のフィラメントと AMS スロット配置."""
+
     warnings: list[str] = Field(default_factory=list)
 
 

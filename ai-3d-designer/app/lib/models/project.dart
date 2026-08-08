@@ -253,6 +253,130 @@ class Model3D {
       );
 }
 
+class SlotAssignment {
+  const SlotAssignment({
+    this.slot,
+    required this.part,
+    required this.product,
+    required this.color,
+    required this.grams,
+    required this.reason,
+    required this.needsLoading,
+    required this.externalSpool,
+  });
+
+  /// 装填済みのスロット番号。未装填なら null。
+  final int? slot;
+
+  final String part;
+  final String product;
+  final String color;
+  final double grams;
+  final String reason;
+
+  /// true なら、このフィラメントを新たに装填する必要がある。
+  final bool needsLoading;
+
+  /// true なら AMS を通せないので外部スプールから給送する。
+  final bool externalSpool;
+
+  factory SlotAssignment.fromJson(Map<String, dynamic> json) => SlotAssignment(
+        slot: json['slot'] as int?,
+        part: json['part'] as String,
+        product: json['product'] as String,
+        color: json['color'] as String,
+        grams: (json['grams'] as num).toDouble(),
+        reason: json['reason'] as String,
+        needsLoading: json['needs_loading'] as bool,
+        externalSpool: json['external_spool'] as bool,
+      );
+
+  String get slotLabel {
+    if (externalSpool) return '外部スプール';
+    if (slot == null) return '空きなし';
+    return 'Slot $slot';
+  }
+}
+
+class AmsPlan {
+  const AmsPlan({required this.assignments, required this.warnings});
+
+  final List<SlotAssignment> assignments;
+  final List<String> warnings;
+
+  factory AmsPlan.fromJson(Map<String, dynamic> json) => AmsPlan(
+        assignments: (json['assignments'] as List<dynamic>)
+            .map((e) => SlotAssignment.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        warnings: (json['warnings'] as List<dynamic>).cast<String>(),
+      );
+
+  bool get requiresLoading => assignments.any((a) => a.needsLoading);
+}
+
+class LoadedSlot {
+  const LoadedSlot({required this.slot, required this.product, required this.color});
+
+  final int slot;
+  final String product;
+  final String color;
+
+  factory LoadedSlot.fromJson(Map<String, dynamic> json) => LoadedSlot(
+        slot: json['slot'] as int,
+        product: json['product'] as String,
+        color: json['color'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {'slot': slot, 'product': product, 'color': color};
+}
+
+class Filament {
+  const Filament({
+    required this.product,
+    required this.material,
+    required this.colors,
+    required this.amsCompatible,
+    required this.notes,
+  });
+
+  final String product;
+  final String material;
+  final List<String> colors;
+  final bool amsCompatible;
+  final String notes;
+
+  factory Filament.fromJson(Map<String, dynamic> json) => Filament(
+        product: json['product'] as String,
+        material: json['material'] as String,
+        colors: (json['colors'] as List<dynamic>).cast<String>(),
+        amsCompatible: json['ams_compatible'] as bool,
+        notes: json['notes'] as String,
+      );
+}
+
+class UserSettings {
+  const UserSettings({
+    required this.amsConnected,
+    required this.slots,
+    required this.printerModel,
+  });
+
+  final bool amsConnected;
+  final List<LoadedSlot> slots;
+  final String printerModel;
+
+  factory UserSettings.fromJson(Map<String, dynamic> json) {
+    final ams = json['ams'] as Map<String, dynamic>;
+    return UserSettings(
+      amsConnected: ams['connected'] as bool,
+      slots: (ams['slots'] as List<dynamic>)
+          .map((e) => LoadedSlot.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      printerModel: json['printer_model'] as String,
+    );
+  }
+}
+
 class PrintData {
   const PrintData({
     this.url,
@@ -261,6 +385,7 @@ class PrintData {
     required this.filamentGrams,
     required this.estimated,
     required this.estimateSource,
+    this.amsPlan,
     required this.warnings,
   });
 
@@ -275,6 +400,10 @@ class PrintData {
   final bool estimated;
 
   final String estimateSource;
+
+  /// パーツ別のフィラメントと AMS スロット配置。
+  final AmsPlan? amsPlan;
+
   final List<String> warnings;
 
   factory PrintData.fromJson(Map<String, dynamic> json) => PrintData(
@@ -284,6 +413,9 @@ class PrintData {
         filamentGrams: (json['filament_grams'] as num).toDouble(),
         estimated: json['estimated'] as bool,
         estimateSource: json['estimate_source'] as String,
+        amsPlan: json['ams_plan'] == null
+            ? null
+            : AmsPlan.fromJson(json['ams_plan'] as Map<String, dynamic>),
         warnings: (json['warnings'] as List<dynamic>).cast<String>(),
       );
 

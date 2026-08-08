@@ -119,6 +119,34 @@ class ApiClient {
   Future<Project> buildPrintData(String id) =>
       _project('POST', '/projects/$id/print');
 
+  // --- 設定 (AMS) ---
+
+  Future<UserSettings> getSettings() async {
+    final response = await _get('/me/settings', authenticated: true);
+    return UserSettings.fromJson(response);
+  }
+
+  /// AMS に今なにが装填されているかを登録する。
+  Future<UserSettings> updateAms({
+    required bool connected,
+    required List<LoadedSlot> slots,
+  }) async {
+    final response = await _send('PUT', '/me/ams', body: {
+      'connected': connected,
+      'slots': slots.map((s) => s.toJson()).toList(),
+    });
+    return UserSettings.fromJson(
+      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+    );
+  }
+
+  Future<List<Filament>> listFilaments() async {
+    final response = await _send('GET', '/me/filaments');
+    return (jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>)
+        .map((e) => Filament.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// 参考画像をアップロードして、アイデアに添付できる URL を得る。
   Future<String> uploadImage({
     required List<int> bytes,
@@ -202,6 +230,7 @@ class ApiClient {
       response = switch (method) {
         'GET' => await _http.get(uri, headers: headers),
         'POST' => await _http.post(uri, headers: headers, body: encoded),
+        'PUT' => await _http.put(uri, headers: headers, body: encoded),
         _ => throw ArgumentError('未対応のメソッド: $method'),
       };
     } catch (error) {
