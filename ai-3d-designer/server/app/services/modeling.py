@@ -159,12 +159,15 @@ class ModelingService:
         assert project.proposal is not None
 
         source_image = self._pick_source_image(project)
+        # URL ではなく実体を渡す。保存先がローカルでも Cloud Storage でも
+        # 同じように動かすため(生成 API から /media/... へは到達できない)。
+        image_bytes = await self._storage.get(source_image)
 
         project.model.job_status = JobStatus.running
         await self._repo.save(project)
 
         job_id = await self._provider.submit(
-            GenerationRequest(image_url=source_image, with_texture=False)
+            GenerationRequest(image=image_bytes, with_texture=False)
         )
         project.model.job_id = job_id
         await self._repo.save(project)

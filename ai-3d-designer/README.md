@@ -212,7 +212,18 @@ scipy も rtree も使わない。この判定ひとつのために依存を増�
 - **Bambu Studio CLI**: この環境では Docker デーモンが使えず未検証。
   `docker/bambu-studio.Dockerfile` は用意してあるが、初回は手元でビルドして
   動作確認してから使うこと。既定は概算モードなので、無くてもアプリは動く
-- **Tripo3D / OpenAI / Claude の実接続**: API キーが無いため未検証
+- **Tripo3D / OpenAI / Claude の実接続**: API キーが無いため未検証。
+  Tripo は `scripts/check_tripo.py` で確認できます
+
+  ```bash
+  export APP_TRIPO_API_KEY=tsk_...
+  .venv/bin/python scripts/check_tripo.py                    # 残高だけ(無料)
+  .venv/bin/python scripts/check_tripo.py --generate 猫.png   # 実際に生成(有料)
+  ```
+
+  必要なのは API キーだけで、ユーザー ID の類は使いません。
+  この確認はアプリのプロバイダ実装をそのまま通すので、SDK ではなく
+  **自前のバインディング**を検証できます
 - **Flutter アプリ**: この環境に Flutter SDK が無く、コンパイルできていません。
   検証はサーバー側(pytest)と CI の `flutter analyze` / `flutter test` に依存しています
 

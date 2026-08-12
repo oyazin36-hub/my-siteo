@@ -7,7 +7,9 @@ DESIGN.md §2-1 の方針どおり、プロバイダ固有のコードはこの�
 
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, Protocol
 
 MeshFormat = Literal["glb", "gltf", "obj", "stl", "3mf"]
@@ -18,8 +20,15 @@ JobState = Literal["queued", "running", "done", "error"]
 class GenerationRequest:
     """画像 1 枚から 3D モデルを起こす依頼."""
 
-    image_url: str
-    """STEP3 で承認された画像。プロバイダから到達できる URL である必要がある。"""
+    image: bytes
+    """STEP3 で承認された画像の中身.
+
+    URL ではなく実体を渡す。ローカル開発では画像が /media/... という
+    サーバー相対 URL で保存されており、Tripo からは到達できないため。
+    実体を渡せば保存先(ローカル / Cloud Storage)に関係なく動く。
+    """
+
+    image_media_type: str = "image/png"
 
     with_texture: bool = False
     """3D プリント用途ではテクスチャを使わないので既定で False(そのぶん安価)。"""
@@ -31,6 +40,11 @@ class GenerationRequest:
 class MeshArtifact:
     data: bytes
     format: MeshFormat
+
+
+#: 一時ファイルに付ける拡張子。SDK は中身から形式を判定するが、
+#: 拡張子が無いと「トークンらしき文字列」と誤判定されうるので付けておく。
+_IMAGE_SUFFIXES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 
 
 class Mesh3DError(Exception):
@@ -65,20 +79,27 @@ class TripoMeshProvider:
         self._model_version = model_version
 
     async def submit(self, request: GenerationRequest) -> str:
-        kwargs: dict[str, object] = {
-            "image": request.image_url,
-            "texture": request.with_texture,
-            "pbr": request.with_texture,
-        }
-        if self._model_version:
-            kwargs["model_version"] = self._model_version
-        if request.target_polycount is not None:
-            kwargs["face_limit"] = request.target_polycount
+        # SDK は「http(s) の URL」「ローカルのパス」「アップロード済みトークン」を
+        # 受け付ける。実体を一時ファイルに書いて渡すと SDK がアップロードしてくれる。
+        suffix = _IMAGE_SUFFIXES.get(request.image_media_type, ".png")
+        with tempfile.TemporaryDirectory() as workdir:
+            path = Path(workdir) / f"source{suffix}"
+            path.write_bytes(request.image)
 
-        try:
-            return await self._client.image_to_model(**kwargs)  # type: ignore[arg-type]
-        except Exception as exc:
-            raise Mesh3DError(f"3Dモデルの生成依頼に失敗しました: {exc}") from exc
+            kwargs: dict[str, object] = {
+                "image": str(path),
+                "texture": request.with_texture,
+                "pbr": request.with_texture,
+            }
+            if self._model_version:
+                kwargs["model_version"] = self._model_version
+            if request.target_polycount is not None:
+                kwargs["face_limit"] = request.target_polycount
+
+            try:
+                return await self._client.image_to_model(**kwargs)  # type: ignore[arg-type]
+            except Exception as exc:
+                raise Mesh3DError(f"3Dモデルの生成依頼に失敗しました: {exc}") from exc
 
     async def poll(self, job_id: str) -> JobState:
         from tripo3d import TaskStatus
